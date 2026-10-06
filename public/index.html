@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Visual Makeover</title>
+  <meta name="description" content="Consent-first AI visual website makeover workspace." />
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="orb orb-a"></div><div class="orb orb-b"></div>
+  <header class="topbar">
+    <a class="brand" href="#">VISUAL<span>MAKEOVER</span></a>
+    <div class="status"><i></i><span id="operaStatus">Opera bridge checking…</span></div>
+  </header>
+
+  <main class="shell">
+    <section class="hero">
+      <p class="eyebrow">SEE THE REAL SITE · CHANGE ONLY WHAT YOU MEAN</p>
+      <h1>Give a website a new face without giving AI the keys to the house.</h1>
+      <p class="lede">Scrape public pages, inspect a consented browser session, generate a visual plan, and export a makeover bundle. Authenticated browser access is separately granted, short-lived, and receipted.</p>
+      <div class="urlbar">
+        <input id="url" aria-label="Website URL" type="url" placeholder="https://example.com" value="https://example.com" />
+        <button id="startBtn" class="primary">Inspect site</button>
+      </div>
+      <div class="trustline"><span>Public read</span><b>→</b><span>Explicit browser grant</span><b>→</b><span>Export, never silent publish</span></div>
+    </section>
+
+    <section class="grid">
+      <article class="panel browser-card">
+        <div class="panel-head"><div><p class="kicker">BROWSER</p><h2>Opera lane</h2></div><span class="pill">MCP adapter</span></div>
+        <div class="mock-browser">
+          <div class="chrome"><span></span><span></span><span></span><div id="browserAddress">example.com</div></div>
+          <div class="page-preview">
+            <div class="preview-nav"></div><div class="preview-title"></div><div class="preview-copy"></div><div class="preview-copy short"></div>
+            <div class="preview-cards"><i></i><i></i><i></i></div>
+          </div>
+        </div>
+        <div class="capabilities"><span>tabs</span><span>history</span><span>DOM/accessibility</span><span>screenshot</span><span>navigate</span></div>
+      </article>
+
+      <article class="panel control-card">
+        <div class="panel-head"><div><p class="kicker">AUTHORITY</p><h2>Dual gate</h2></div><span id="authState" class="pill muted">not granted</span></div>
+        <div class="gate"><b>1</b><div><strong>App identity</strong><p>The user is known to Visual Makeover.</p></div><span id="identityCheck">○</span></div>
+        <div class="gate"><b>2</b><div><strong>Browser permission</strong><p>Target origin + capabilities + 15 minute expiry.</p></div><span id="grantCheck">○</span></div>
+        <button id="grantBtn" class="secondary">Review browser notice</button>
+        <p class="fine">Passwords and cookies are not collected by this app. Authenticated reads must stay inside the user-granted browser/provider boundary.</p>
+      </article>
+
+      <article class="panel results-card">
+        <div class="panel-head"><div><p class="kicker">MAKEOVER</p><h2>Design diagnosis</h2></div><span id="analysisState" class="pill muted">waiting</span></div>
+        <div id="resultEmpty" class="empty">Inspect a public page to generate a structured makeover plan.</div>
+        <div id="result" class="result hidden"></div>
+      </article>
+
+      <article class="panel receipt-card">
+        <div class="panel-head"><div><p class="kicker">PROOF</p><h2>Session receipts</h2></div><span class="pill">local first</span></div>
+        <div id="receipts" class="receipts"><p>No actions yet.</p></div>
+        <button id="exportBtn" class="ghost" disabled>Export makeover.json</button>
+      </article>
+    </section>
+  </main>
+
+  <dialog id="notice">
+    <form method="dialog" class="notice-card">
+      <p class="kicker">AI BROWSER NOTICE</p>
+      <h2>Choose what the AI may do.</h2>
+      <p>Visual Makeover can read the public site without your logged-in session. Browser access is separate. The grant below is scoped to this site and expires automatically.</p>
+      <label class="scope"><input type="checkbox" value="scrape:public" checked /> <span><b>Public scrape</b><small>Fetch public HTML and extract visual/content signals.</small></span></label>
+      <label class="scope"><input type="checkbox" value="browser:read" /> <span><b>Read Opera tab</b><small>Read tab content, accessibility tree, history, or screenshots through the configured bridge.</small></span></label>
+      <label class="scope"><input type="checkbox" value="browser:navigate" /> <span><b>Navigate Opera</b><small>Allow navigation to the granted site. No form submission or typing capability is included.</small></span></label>
+      <div class="notice-actions"><button value="cancel" class="ghost">Cancel</button><button id="acceptGrant" value="default" class="primary">Accept selected access</button></div>
+    </form>
+  </dialog>
+
+  <script type="module" src="/app.js"></script>
+</body>
+</html>
