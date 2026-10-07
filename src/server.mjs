@@ -8,6 +8,7 @@ import { callOperaBridge, requiredScopeForOperaTool, OPERA_CAPABILITIES } from '
 import { callScopedBrowserBridge } from './browser/scoped-bridge.mjs';
 import { verifyCloudflareAccessJwt } from './auth-cloudflare-access.mjs';
 import { decideBrowserBridgeRecovery } from './browser/recovery.mjs';
+import { buildCapturedBrowserEvidence } from './browser/captured-evidence.mjs';
 import {
   BROWSER_RECOVERY_BOOLEAN_KEYS,
   normalizeBrowserRecoveryEvidence,
@@ -24,7 +25,10 @@ const MAX_SCRAPE_BYTES = 1_500_000;
 const sessions = new Map();
 const grants = new Map();
 const recoveryStates = new Map();
+const captures = new Map();
 const RECOVERY_STATE_TTL_MS = 15 * 60_000;
+const CAPTURE_TTL_MS = 15 * 60_000;
+const MAX_CAPTURE_IDS = 8;
 const BROWSER_PROVIDERS = Object.freeze(['opera', 'authenticated_browser_bridge', 'generic_browser_automation']);
 
 const mime = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.svg': 'image/svg+xml' };
@@ -88,17 +92,32 @@ function htmlToSignals(html, url) {
   return { url, title, headings, text, colors, hasViewport };
 }
 
-function heuristicMakeover(signals) {
+function heuristicMakeover(signals, browserCaptures = []) {
   const recommendations = [];
+  const renderedTextChars = browserCaptures.reduce((sum, capture) => sum + (capture.renderedText?.length || 0), 0);
+  const screenshotCount = browserCaptures.filter(capture => Boolean(capture.screenshotSha256)).length;
   if (!signals.hasViewport) recommendations.push({ priority: 'high', area: 'responsive', change: 'Add a viewport meta tag before any visual redesign.' });
   if (!signals.headings.length) recommendations.push({ priority: 'high', area: 'hierarchy', change: 'Create a visible H1-led hierarchy so the page has a clear visual spine.' });
   if (signals.colors.length > 8) recommendations.push({ priority: 'medium', area: 'palette', change: 'Collapse the palette into 3-5 semantic tokens and reserve accent colors for actions.' });
   recommendations.push({ priority: 'medium', area: 'layout', change: 'Use a consistent max-width, spacing scale, and section rhythm before adding decorative effects.' });
   recommendations.push({ priority: 'medium', area: 'interaction', change: 'Give primary actions one dominant treatment and preserve visible keyboard focus states.' });
+  if (browserCaptures.length) {
+    recommendations.unshift({
+      priority: 'high',
+      area: 'browser-proof',
+      change: 'Keep the redesign anchored to the captured rendered-page evidence; do not treat scrape-only assumptions as browser-verified.'
+    });
+  }
   return {
     summary: `Makeover plan for ${signals.title || new URL(signals.url).hostname}`,
     direction: 'Preserve product meaning, improve hierarchy, spacing, contrast, and action clarity before changing brand personality.',
     recommendations,
+    evidence: {
+      browserRealityCaptureCount: browserCaptures.length,
+      renderedTextChars,
+      screenshotCount,
+      screenshotPixelsAnalyzed: false
+    },
     tokens: { radius: '18px', space: ['4px','8px','12px','16px','24px','32px','48px'], maxWidth: '1180px' }
   };
 }
@@ -134,6 +153,89 @@ async function scrape(rawUrl) {
     }
     throw new Error('Too many redirects.');
   } finally { clearTimeout(timer); }
+}
+
+function publicCapture(capture) {
+  return {
+    id: capture.id,
+    contractId: capture.contractId,
+    evidenceFingerprintSha256: capture.evidenceFingerprintSha256,
+    receipt: capture.receipt,
+    tool: capture.tool,
+    provider: capture.provider,
+    expiresAt: capture.expiresAt,
+    hasRenderedText: Boolean(capture.renderedText),
+    screenshotSha256: capture.screenshotSha256
+  };
+}
+
+function storeBrowserCapture({ session, grant, origin, provider, tool, targetUrl, result }) {
+  let finalUrl = targetUrl;
+  const candidate = typeof result?.finalUrl === 'string' ? result.finalUrl : typeof result?.url === 'string' ? result.url : null;
+  if (candidate) {
+    try {
+      if (originOf(candidate) === origin) finalUrl = candidate;
+    } catch {}
+  }
+
+  const built = buildCapturedBrowserEvidence({
+    authorizedInputUrl: targetUrl,
+    finalUrl,
+    tool,
+    result,
+    observedAt: new Date().toISOString()
+  });
+  const capture = {
+    id: randomUUID(),
+    sessionId: session.id,
+    grantId: grant.id,
+    origin,
+    provider,
+    tool,
+    createdAt: Date.now(),
+    expiresAt: Math.min(grant.expiresAt, Date.now() + CAPTURE_TTL_MS),
+    ...built
+  };
+  captures.set(capture.id, capture);
+  return capture;
+}
+
+function resolveBrowserCaptures({ sessionId, origin, captureIds }) {
+  const ids = [...new Set(Array.isArray(captureIds) ? captureIds : [])];
+  if (ids.length > MAX_CAPTURE_IDS) throw Object.assign(new Error(`At most ${MAX_CAPTURE_IDS} browser captures may be analyzed together.`), { status: 400 });
+  return ids.map(id => {
+    const capture = captures.get(id);
+    if (!capture || capture.expiresAt <= Date.now()) {
+      if (capture) captures.delete(id);
+      throw Object.assign(new Error('Browser capture missing or expired.'), { status: 409 });
+    }
+    if (capture.sessionId !== sessionId) throw Object.assign(new Error('Browser capture belongs to another app session.'), { status: 403 });
+    if (capture.origin !== origin) throw Object.assign(new Error('Browser capture belongs to another origin.'), { status: 403 });
+    return capture;
+  });
+}
+
+function promptOsHandoff({ signals, plan, browserCaptures }) {
+  return {
+    contractId: 'visual-makeover/promptos-handoff@v1',
+    status: 'draft',
+    sourceProduct: 'Visual Makeover',
+    targetProduct: 'PromptOS',
+    intent: 'Govern a website visual makeover proposal from captured browser reality evidence.',
+    authority: 'advisory-only',
+    executionAuthorized: false,
+    registrationAuthority: false,
+    browserRealityContract: 'juss/browser-reality@v1',
+    source: { url: signals.url },
+    evidence: browserCaptures.map(capture => ({
+      captureId: capture.id,
+      evidenceFingerprintSha256: capture.evidenceFingerprintSha256,
+      receipt: capture.receipt
+    })),
+    makeover: plan,
+    requestedVerification: ['browser-reality', 'playwright'],
+    authorityBoundary: 'This artifact cannot widen browser, repository, deployment, publication, provider, or mutation authority.'
+  };
 }
 
 function recoveryStateFor(sessionId, origin) {
@@ -310,11 +412,43 @@ async function api(req, res, pathname) {
   }
 
   if (pathname === '/api/analyze' && req.method === 'POST') {
-    requireSession(req);
+    const session = requireSession(req);
     const b = await bodyJson(req);
     if (!b.signals?.url) return json(res, 400, { error: 'Scrape signals are required.' });
-    const plan = heuristicMakeover(b.signals);
-    return json(res, 200, { plan, provider: 'local-heuristic', note: 'Swap this adapter for PromptOS/your model router without changing browser authority.' });
+    const origin = originOf(b.signals.url);
+    const browserCaptures = resolveBrowserCaptures({ sessionId: session.id, origin, captureIds: b.captureIds });
+    const plan = heuristicMakeover(b.signals, browserCaptures);
+    const analysisReceipt = await receipt('MAKEOVER_ANALYZED', {
+      origin,
+      provider: 'local-heuristic',
+      captureIds: browserCaptures.map(capture => capture.id),
+      evidenceFingerprints: browserCaptures.map(capture => capture.evidenceFingerprintSha256)
+    });
+    return json(res, 200, {
+      plan,
+      provider: 'local-heuristic',
+      evidence: browserCaptures.map(publicCapture),
+      receipt: analysisReceipt,
+      note: 'Browser evidence is analysis input only. It does not transfer browser authority to the analyzer.'
+    });
+  }
+
+  if (pathname === '/api/handoff/promptos' && req.method === 'POST') {
+    const session = requireSession(req);
+    const b = await bodyJson(req);
+    if (!b.signals?.url) return json(res, 400, { error: 'Scrape signals are required.' });
+    const origin = originOf(b.signals.url);
+    const browserCaptures = resolveBrowserCaptures({ sessionId: session.id, origin, captureIds: b.captureIds });
+    const plan = heuristicMakeover(b.signals, browserCaptures);
+    const artifact = promptOsHandoff({ signals: b.signals, plan, browserCaptures });
+    const handoffReceipt = await receipt('PROMPTOS_HANDOFF_DRAFTED', {
+      origin,
+      contractId: artifact.contractId,
+      evidenceFingerprints: browserCaptures.map(capture => capture.evidenceFingerprintSha256),
+      executionAuthorized: false,
+      registrationAuthority: false
+    });
+    return json(res, 200, { artifact, receipt: handoffReceipt });
   }
 
   if (pathname === '/api/browser/inspect' && req.method === 'POST') {
@@ -431,21 +565,42 @@ async function api(req, res, pathname) {
       }
 
       if (executableProvider === 'opera') recoveryStates.delete(recoveryState.key);
+      const capture = storeBrowserCapture({
+        session,
+        grant,
+        origin: targetOrigin,
+        provider: executableProvider,
+        tool: b.tool,
+        targetUrl: b.targetUrl,
+        result
+      });
+      const evidenceReceipt = await receipt('BROWSER_EVIDENCE_CAPTURED', {
+        captureId: capture.id,
+        grantId: grant.id,
+        origin: targetOrigin,
+        provider: executableProvider,
+        tool: b.tool,
+        evidenceFingerprintSha256: capture.evidenceFingerprintSha256,
+        screenshotSha256: capture.screenshotSha256,
+        hasRenderedText: Boolean(capture.renderedText)
+      });
       const callReceipt = await receipt('BROWSER_INSPECT_COMPLETED', {
         grantId: grant.id,
         route: decision.route,
         provider: executableProvider,
         tool: b.tool,
-        origin: grant.origin
+        origin: grant.origin,
+        captureId: capture.id
       });
       return json(res, 200, {
         provider: executableProvider,
         result,
+        capture: publicCapture(capture),
         decision,
         evidence,
         runtimeMeta,
         authority: { source: 'browser-grant', grantId: grant.id, scope, provider: executableProvider },
-        receipts: [routeReceipt, callReceipt]
+        receipts: [routeReceipt, evidenceReceipt, callReceipt]
       });
     } finally { clearTimeout(timer); }
   }
