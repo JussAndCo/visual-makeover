@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import http from 'node:http';
+import { readFile } from 'node:fs/promises';
 
 const PORT = 4197;
 const BRIDGE_PORT = 4198;
@@ -41,6 +42,8 @@ test('dual gate API issues app session, scoped browser grant, and allow-listed O
 
   const signed = await fetch(`${base}/api/auth/session`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' }).then(r => r.json());
   assert.ok(signed.token);
+  const ledger = await readFile(new URL('../data/receipts.jsonl', import.meta.url), 'utf8');
+  assert.match(ledger, /APP_SESSION_CREATED/);
 
   const grantRes = await fetch(`${base}/api/browser/grants`, {
     method: 'POST',

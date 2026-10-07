@@ -1,5 +1,5 @@
 import http from 'node:http';
-import { readFile, appendFile } from 'node:fs/promises';
+import { readFile, appendFile, mkdir } from 'node:fs/promises';
 import { extname, join, normalize } from 'node:path';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
@@ -61,7 +61,9 @@ function requireGrant(req, { scope, origin, sessionId }) {
 
 async function receipt(event, detail = {}) {
   const row = { id: randomUUID(), at: new Date().toISOString(), event, ...detail };
-  try { await appendFile(join(ROOT, 'data', 'receipts.jsonl'), JSON.stringify(row) + '\n'); } catch {}
+  const dataDir = join(ROOT, 'data');
+  await mkdir(dataDir, { recursive: true });
+  await appendFile(join(dataDir, 'receipts.jsonl'), JSON.stringify(row) + '\n');
   return row;
 }
 
@@ -78,7 +80,7 @@ function heuristicMakeover(signals) {
   const recommendations = [];
   if (!signals.hasViewport) recommendations.push({ priority: 'high', area: 'responsive', change: 'Add a viewport meta tag before any visual redesign.' });
   if (!signals.headings.length) recommendations.push({ priority: 'high', area: 'hierarchy', change: 'Create a visible H1-led hierarchy so the page has a clear visual spine.' });
-  if (signals.colors.length > 8) recommendations.push({ priority: 'medium', area: 'palette', change: 'Collapse the palette into 3â€“5 semantic tokens and reserve accent colors for actions.' });
+  if (signals.colors.length > 8) recommendations.push({ priority: 'medium', area: 'palette', change: 'Collapse the palette into 3-5 semantic tokens and reserve accent colors for actions.' });
   recommendations.push({ priority: 'medium', area: 'layout', change: 'Use a consistent max-width, spacing scale, and section rhythm before adding decorative effects.' });
   recommendations.push({ priority: 'medium', area: 'interaction', change: 'Give primary actions one dominant treatment and preserve visible keyboard focus states.' });
   return {
@@ -186,7 +188,7 @@ async function api(req, res, pathname) {
     const b = await bodyJson(req);
     if (!b.signals?.url) return json(res, 400, { error: 'Scrape signals are required.' });
     const plan = heuristicMakeover(b.signals);
-    return json(res, 200, { plan, provider: 'local-heuristic', note: 'Swap this adapter for PromptOS/ your model router without changing browser authority.' });
+    return json(res, 200, { plan, provider: 'local-heuristic', note: 'Swap this adapter for PromptOS/your model router without changing browser authority.' });
   }
 
   if (pathname === '/api/browser/opera/call' && req.method === 'POST') {

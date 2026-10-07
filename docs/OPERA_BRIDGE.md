@@ -11,15 +11,13 @@ The browser path is:
 5. that bridge invokes the Opera MCP runtime that already has the user's browser connection
 6. Visual Makeover records a receipt
 
-Supported Opera tools are deliberately limited to the connector capabilities proven by the integration:
+Supported Opera tools exposed by Visual Makeover are deliberately origin-scoped:
 
-- `list_tabs`
-- `history`
 - `tab_content`
 - `screenshot`
 - `go_to_page`
 
-`go_to_page` requires `browser:navigate`; the read tools require `browser:read`.
+`go_to_page` requires `browser:navigate`; the tab/screenshot tools require `browser:read`. The underlying connector may expose browser-wide `list_tabs` and `history`, but this app blocks them until a separate global-read authority exists.
 
 No password typing, cookie extraction, arbitrary form submission, or silent publishing capability is represented by this contract.
 

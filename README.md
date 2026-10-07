@@ -5,7 +5,7 @@ A consent-first AI workspace for visually redesigning websites from **real brows
 It can:
 
 - scrape public website HTML into compact design/content signals
-- model an Opera MCP browser lane for tabs, history, page/accessibility content, screenshots, and navigation
+- model an origin-scoped Opera MCP lane for tab/accessibility content, screenshots, and navigation
 - require a separate, visible browser grant after app sign-in
 - scope grants to one origin + selected capabilities + a short expiry
 - generate a structured makeover plan
