@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+
 export const BROWSER_RECOVERY_BOOLEAN_KEYS = Object.freeze([
   'directCapabilitySufficient',
   'browserOnlyInteractionRequired',
@@ -108,6 +111,23 @@ export function browserRuntimeEvidenceFromEnv(env = process.env) {
 
   if (values.genericBrowserAvailable === false) {
     set('genericBrowserSufficient', false, 'derived:no-generic-browser');
+  }
+
+  const defaultHostFile = fileURLToPath(new URL('../../data/opera-host-evidence.json', import.meta.url));
+  const hostFile = env.OPERA_HOST_EVIDENCE_FILE || (env === process.env ? defaultHostFile : null);
+  if (hostFile) {
+    try {
+      const snapshot = JSON.parse(readFileSync(hostFile, 'utf8'));
+      const expiresAtMs = Date.parse(snapshot.expiresAt || '');
+      if (Number.isFinite(expiresAtMs) && expiresAtMs > Date.now() && typeof snapshot.toolSurfaceAvailable === 'boolean') {
+        set('operaConnectorAvailable', snapshot.toolSurfaceAvailable, `host:${String(snapshot.source || 'opera-host-snapshot').slice(0, 100)}`);
+        if (typeof snapshot.liveSessionExposed === 'boolean') {
+          set('operaLiveSessionExposed', snapshot.liveSessionExposed, `host:${String(snapshot.source || 'opera-host-snapshot').slice(0, 100)}`);
+        } else if (snapshot.toolSurfaceAvailable === false) {
+          set('operaLiveSessionExposed', false, `host:${String(snapshot.source || 'opera-host-snapshot').slice(0, 100)}:derived`);
+        }
+      }
+    } catch {}
   }
 
   return normalizeBrowserRecoveryEvidence({ values, known, sources });
