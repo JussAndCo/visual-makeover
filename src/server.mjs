@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { assertPublicUrl, originOf } from './security.mjs';
 import { callOperaBridge, requiredScopeForOperaTool, OPERA_CAPABILITIES } from './browser/opera-provider.mjs';
 import { verifyCloudflareAccessJwt } from './auth-cloudflare-access.mjs';
+import { decideBrowserBridgeRecovery } from './browser/recovery.mjs';
 
 const ROOT = normalize(join(fileURLToPath(new URL('..', import.meta.url)), '..'));
 const PUBLIC = join(ROOT, 'public');
@@ -126,7 +127,28 @@ async function scrape(rawUrl) {
 
 async function api(req, res, pathname) {
   if (pathname === '/api/health' && req.method === 'GET') return json(res, 200, { ok: true, noticeVersion: NOTICE_VERSION });
-  if (pathname === '/api/browser/opera/status' && req.method === 'GET') return json(res, 200, { provider: 'opera-mcp', configured: Boolean(process.env.OPERA_BRIDGE_URL), capabilities: OPERA_CAPABILITIES });
+  if (pathname === '/api/browser/opera/status' && req.method === 'GET') return json(res, 200, {
+    provider: 'opera-mcp',
+    configured: Boolean(process.env.OPERA_BRIDGE_URL),
+    capabilities: OPERA_CAPABILITIES,
+    note: 'Plugin installation/permission and live browser-session exposure are separate states.'
+  });
+
+  if (pathname === '/api/browser/recovery' && req.method === 'POST') {
+    requireSession(req);
+    const b = await bodyJson(req);
+    const decision = decideBrowserBridgeRecovery(b);
+    const r = await receipt('BROWSER_ROUTE_DECIDED', {
+      contract: decision.contract,
+      route: decision.route,
+      classification: decision.classification,
+      providerPageEvidence: b.providerPageEvidence ?? 'unknown',
+      operaConnectorAvailable: Boolean(b.operaConnectorAvailable),
+      operaLiveSessionExposed: Boolean(b.operaLiveSessionExposed),
+      executionAuthorized: decision.executionAuthorized
+    });
+    return json(res, 200, { decision, receipt: r });
+  }
 
   if (pathname === '/api/auth/session' && req.method === 'POST') {
     let identity;

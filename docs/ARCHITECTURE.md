@@ -13,13 +13,16 @@ A logged-in app session is **not** browser authorization. A browser grant is **n
 
 ## Browser providers
 
-`src/browser/opera-provider.mjs` models the currently supported Opera connector capability surface:
+`src/browser/opera-provider.mjs` exposes only origin-scoped Opera operations in this product:
 
-- read: `list_tabs`, `history`, `tab_content`, `screenshot`
+- read: `tab_content`, `screenshot`
 - navigate: `go_to_page`
+- browser-global reads such as `list_tabs` and `history`: blocked until a separate global-read authority exists
 - mutate/type/submit: intentionally unsupported in this starter
 
-The repo does not collect browser cookies or passwords. `OPERA_BRIDGE_URL` is an owner-controlled adapter that translates `{tool,args}` to the Opera MCP host used in the deployment environment. This avoids hard-coding a ChatGPT/plugin-only transport into the product.
+`src/browser/recovery.mjs` ports the proven FCR contract `juss/browser-bridge-recovery@v1`. It keeps provider setup evidence separate from runtime attachment evidence. An installed/enabled/permissioned Opera plugin with a missing live session is `BLOCKED_CONNECTOR_BRIDGE`; it does not trigger repeated setup instructions. The policy re-probes Opera at most once, then may route to another authenticated bridge or a bounded generic browser capability. Every route still returns `executionAuthorized: false` until the normal human authority gate is satisfied.
+
+The repo does not collect browser cookies or passwords. `OPERA_BRIDGE_URL` is an owner-controlled standalone-runtime adapter that translates `{tool,args}` to the browser host used in the deployment environment. This avoids pretending a ChatGPT plugin transport is itself a public embeddable API.
 
 ## Scraping
 

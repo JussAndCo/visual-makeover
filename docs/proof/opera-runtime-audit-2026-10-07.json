@@ -1,0 +1,16 @@
+{
+  "auditDate": "2026-10-07",
+  "subject": "Opera Browser Connector state split",
+  "observed": {
+    "pluginInstalled": true,
+    "pluginStatus": "ENABLED",
+    "chatgptAppPermission": "Allow all actions",
+    "liveProbeTool": "list_tabs",
+    "liveProbeOutcome": "UNAVAILABLE",
+    "liveProbeErrorClass": "Browser not connected"
+  },
+  "classification": "BLOCKED_CONNECTOR_BRIDGE",
+  "interpretation": "Plugin registration and ChatGPT permission are verified healthy. The current live-session attach is not exposed. Do not rewrite verified setup state or repeat setup instructions from this runtime error alone.",
+  "recoveryContract": "juss/browser-bridge-recovery@v1",
+  "executionAuthorized": false
+}

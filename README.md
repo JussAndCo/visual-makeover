@@ -33,7 +33,7 @@ The repo includes an Opera MCP adapter contract based on the connector capabilit
 
 The underlying Opera connector may also expose `list_tabs` and `history`, but Visual Makeover blocks those browser-global reads until a separate global-read grant model exists.
 
-Set `OPERA_BRIDGE_URL` to an owner-controlled bridge that maps `{ tool, args }` to the Opera MCP host in your deployment. This starter intentionally does not pretend ChatGPT's connected Opera tool is a public embeddable API. See `docs/OPERA_BRIDGE.md` for the exact trust boundary.
+Visual Makeover reuses the portfolio browser-recovery contract `juss/browser-bridge-recovery@v1`: direct capability first, then live Opera, then another authenticated bridge, then bounded generic automation, otherwise fail closed. A plugin can be installed/enabled and fully permissioned while its live browser session is temporarily not exposed; that state is classified as `BLOCKED_CONNECTOR_BRIDGE`, not as bad user setup. `OPERA_BRIDGE_URL` remains the standalone-runtime adapter for deployments that need to invoke a browser host outside ChatGPT. See `docs/OPERA_BRIDGE.md` for the trust boundary.
 
 ## Production identity
 
@@ -61,7 +61,7 @@ npm run test:playwright
 - configure the Cloudflare Access application/audience for the deployed hostname
 - persist sessions/grants/receipts in a real store
 - add per-domain scraping policy + rate limits + robots/terms evaluation
-- connect the Opera bridge in the runtime that actually has Opera MCP authority
+- connect a live Opera/host bridge when browser-only evidence is required; preserve verified plugin/permission state if the runtime attach is temporarily blocked
 - add screenshot/DOM evidence as inputs to PromptOS
 - add patch/export adapters for GitHub, Figma, or site builders
 - keep publishing as a separate explicit write authorization
