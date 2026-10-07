@@ -1,0 +1,22 @@
+{
+  "auditDate": "2026-10-07",
+  "subject": "server blob corruption repair + browser recovery end-to-end implant",
+  "parentHead": "ba514af3b3e564e69dc02450342f185fd2961936",
+  "observedCorruptServerBlob": "7086a85495dad2457c902855cf66f9416a6385b3",
+  "repairedServerBlob": "c56ed1e38d1094ead21d03b3884c5027648aed4c",
+  "fixes": [
+    "rebuilt staticFile/server tail from clean source text",
+    "preserved juss/browser-bridge-recovery@v1",
+    "validated recovery evidence instead of inferring missing capability states",
+    "kept provider setup separate from live browser attachment in UI copy",
+    "retained explicit browser grant as execution precondition"
+  ],
+  "localProof": {
+    "nodeSyntax": "PASS",
+    "serverStartup": "PASS",
+    "recoveryApi": "PASS",
+    "ambiguousEvidenceReject": "PASS",
+    "playwrightConsentRuntimeTruth": "PASS"
+  },
+  "executionAuthorized": false
+}

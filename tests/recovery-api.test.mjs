@@ -64,3 +64,31 @@ test('browser recovery preserves provider-ready evidence and never self-authoriz
   const ledger = await readFile(new URL('../data/receipts.jsonl', import.meta.url), 'utf8');
   assert.match(ledger, /BROWSER_ROUTE_DECIDED/);
 });
+
+
+test('browser recovery rejects ambiguous evidence instead of inferring capability state', async t => {
+  const port = 4204;
+  const localBase = `http://127.0.0.1:${port}`;
+  const proc = spawn(process.execPath, ['src/server.mjs'], {
+    cwd: new URL('..', import.meta.url),
+    env: { ...process.env, PORT: String(port) },
+    stdio: 'ignore'
+  });
+  t.after(() => proc.kill());
+
+  for (let i = 0; i < 40; i++) {
+    try { if ((await fetch(`${localBase}/api/health`)).ok) break; } catch {}
+    await new Promise(r => setTimeout(r, 50));
+  }
+  const signed = await fetch(`${localBase}/api/auth/session`, {
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}'
+  }).then(r => r.json());
+
+  const response = await fetch(`${localBase}/api/browser/recovery`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${signed.token}` },
+    body: JSON.stringify({ providerPageEvidence: 'observed_ready', operaRetryCount: 0 })
+  });
+  assert.equal(response.status, 400);
+  assert.match((await response.json()).error, /explicit boolean capability states/);
+});

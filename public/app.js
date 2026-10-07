@@ -83,5 +83,5 @@ $('#exportBtn').addEventListener('click', () => {
 
 function escapeHtml(s='') { return String(s).replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }
 
-api('/api/browser/opera/status').then(s => { $('#operaStatus').textContent = s.configured ? 'Opera bridge ready' : 'Opera adapter ready · bridge not connected'; }).catch(() => { $('#operaStatus').textContent = 'Opera adapter unavailable'; });
+api('/api/browser/opera/status').then(s => { $('#operaStatus').textContent = s.configured ? 'Opera runtime adapter configured' : 'Opera adapter ready · live attach is separate'; }).catch(() => { $('#operaStatus').textContent = 'Opera adapter status unavailable'; });
 ensureSession().catch(()=>{});

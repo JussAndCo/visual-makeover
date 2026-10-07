@@ -137,7 +137,22 @@ async function api(req, res, pathname) {
   if (pathname === '/api/browser/recovery' && req.method === 'POST') {
     requireSession(req);
     const b = await bodyJson(req);
-    const decision = decideBrowserBridgeRecovery(b);
+    const evidenceValues = ['unknown', 'founder_reported_ready', 'observed_ready', 'contradicted'];
+    const booleanKeys = [
+      'directCapabilitySufficient',
+      'browserOnlyInteractionRequired',
+      'operaConnectorAvailable',
+      'operaLiveSessionExposed',
+      'alternateAuthenticatedBridgeAvailable',
+      'alternateAuthenticatedBridgeLive',
+      'genericBrowserAvailable',
+      'genericBrowserSufficient'
+    ];
+    if (!evidenceValues.includes(b.providerPageEvidence ?? 'unknown')) return json(res, 400, { error: 'Invalid providerPageEvidence.' });
+    if (booleanKeys.some(key => typeof b[key] !== 'boolean')) return json(res, 400, { error: 'Browser recovery evidence requires explicit boolean capability states.' });
+    if (!Number.isInteger(b.operaRetryCount) || b.operaRetryCount < 0 || b.operaRetryCount > 1) return json(res, 400, { error: 'operaRetryCount must be 0 or 1.' });
+    if (b.operaConnectorError != null && (typeof b.operaConnectorError !== 'string' || b.operaConnectorError.length > 500)) return json(res, 400, { error: 'Invalid operaConnectorError.' });
+    const decision = decideBrowserBridgeRecovery({ ...b, providerPageEvidence: b.providerPageEvidence ?? 'unknown' });
     const r = await receipt('BROWSER_ROUTE_DECIDED', {
       contract: decision.contract,
       route: decision.route,
@@ -237,25 +252,29 @@ async function api(req, res, pathname) {
 
 async function staticFile(req, res, pathname) {
   const rel = pathname === '/' ? 'index.html' : pathname.replace(/^\//, '');
-  const target = normalize(join(PUBLIC,™[
-JNÂˆYˆ
-]\™Ù]œÝ\ÕÚ]
-P“PÊJH™]\›ˆœÛÛŠ™\ËËÈ\œ›ÜŽˆ	Ñ›Ü˜šY[‹‰ÈJNÂˆžHÂˆÛÛœÝÛÛ[H]ØZ]™XYš[J\™Ù]
-NÂˆ™\ËÜš]RXY
-ŒÈ	ØÛÛ[]\IÎˆZ[YVÙ^˜[YJ\™Ù]
-WH	Ø\XØ][Û‹ÛØÝ]\Ý™X[IÈJNÂˆ™\Ë™[™
-ÛÛ[
-NÂˆHØ]ÚÂˆÛÛœÝ[H]ØZ]™XYš[J›Ú[ŠP“PË	Ú[™^š[	ÊJNÂˆ™\ËÜš]RXY
-ŒÈ	ØÛÛ[]\IÎˆ	Ý^Ú[ÈÚ\œÙ]]]‹N	ÈJNÂˆ™\Ë™[™
-[
-NÂˆBŸB‚˜ÛÛœÝÙ\™\ˆH˜Ü™X]TÙ\™\Š\Þ[˜È
-™\K™\ÊHOˆÂˆÛÛœÝ\›H™]ÈT“
-™\K\›‹ËÉÜ™\KšXY\œËšÜÝ	ÛØØ[ÜÝ	ßX
-NÂˆžHÂˆYˆ
-\›œ]˜[YKœÝ\ÕÚ]
-	ËØ\KÉÊJHÂˆÛÛœÝ[™YH]ØZ]\J™\K™\Ë\›œ]˜[YJNÂˆYˆ
-[™YOOH˜[ÙJHœÛÛŠ™\ËÈ\œ›ÜŽˆ	Ó›Ý›Ý[™‰ÈJNÂˆH[ÙH]ØZ]Ý]XÑš[J™\K™\Ë\›œ]˜[YJNÂˆHØ]Ú
-\œŠHÂˆœÛÛŠ™\Ë\œ‹œÝ]\ÈÈ\œ›ÜŽˆ\œ‹›Y\ÜØYÙH	Ô™\]Y\Ý˜Z[Y‰ÈJNÂˆBŸJNÂ‚œÙ\™\‹›\Ý[ŠÔ•	ÌLËŒŒŒIË
+  const target = normalize(join(PUBLIC, rel));
+  if (!target.startsWith(PUBLIC)) return json(res, 403, { error: 'Forbidden.' });
+  try {
+    const content = await readFile(target);
+    res.writeHead(200, { 'content-type': mime[extname(target)] || 'application/octet-stream' });
+    res.end(content);
+  } catch {
+    const html = await readFile(join(PUBLIC, 'index.html'));
+    res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+    res.end(html);
+  }
+}
 
-HOˆÛÛœÛÛK›ÙÊš\ÝX[XZÙ[Ý™\ˆÛˆ‹ËÌLËŒŒŒN‰ÔÔ•X
-JNÂ
+const server = http.createServer(async (req, res) => {
+  const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+  try {
+    if (url.pathname.startsWith('/api/')) {
+      const handled = await api(req, res, url.pathname);
+      if (handled === false) json(res, 404, { error: 'Not found.' });
+    } else await staticFile(req, res, url.pathname);
+  } catch (err) {
+    json(res, err.status || 400, { error: err.message || 'Request failed.' });
+  }
+});
+
+server.listen(PORT, '127.0.0.1', () => console.log(`Visual Makeover on http://127.0.0.1:${PORT}`));
