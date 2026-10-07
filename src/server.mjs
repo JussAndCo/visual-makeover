@@ -178,6 +178,7 @@ function resolveBrowserRecovery(body, operaRetryCount) {
   }
 
   const evidence = mergeBrowserRecoveryEvidence(callerEvidence, runtimeEvidence);
+  const runtimeMeta = runtimeEvidence.runtimeMeta ?? {};
   if (!evidence.complete) {
     return {
       error: {
@@ -194,7 +195,7 @@ function resolveBrowserRecovery(body, operaRetryCount) {
     operaConnectorError: body.operaConnectorError ?? null,
     operaRetryCount
   });
-  return { evidence, decision, providerPageEvidence };
+  return { evidence, decision, providerPageEvidence, runtimeMeta };
 }
 
 async function api(req, res, pathname) {
@@ -226,7 +227,7 @@ async function api(req, res, pathname) {
     const recoveryState = recoveryStateFor(session.id, targetOrigin);
     const resolved = resolveBrowserRecovery(b, recoveryState.operaRetryCount);
     if (resolved.error) return json(res, resolved.error.status, { error: resolved.error.message, evidence: resolved.evidence });
-    const { evidence, decision, providerPageEvidence } = resolved;
+    const { evidence, decision, providerPageEvidence, runtimeMeta } = resolved;
     const r = await receipt('BROWSER_ROUTE_DECIDED', {
       contract: decision.contract,
       evidenceContract: evidence.contract,
@@ -234,6 +235,7 @@ async function api(req, res, pathname) {
       classification: decision.classification,
       providerPageEvidence,
       evidenceSources: evidence.sources,
+      operaHostSnapshot: runtimeMeta.operaHostSnapshot,
       targetOrigin,
       operaRetryCount: recoveryState.operaRetryCount,
       executionAuthorized: decision.executionAuthorized
@@ -241,6 +243,7 @@ async function api(req, res, pathname) {
     return json(res, 200, {
       decision,
       evidence,
+      runtimeMeta,
       recoveryState: { operaRetryCount: recoveryState.operaRetryCount, targetOrigin },
       receipt: r
     });
@@ -327,7 +330,7 @@ async function api(req, res, pathname) {
     const recoveryState = recoveryStateFor(session.id, targetOrigin);
     const resolved = resolveBrowserRecovery(b, recoveryState.operaRetryCount);
     if (resolved.error) return json(res, resolved.error.status, { error: resolved.error.message, evidence: resolved.evidence });
-    const { evidence, decision, providerPageEvidence } = resolved;
+    const { evidence, decision, providerPageEvidence, runtimeMeta } = resolved;
 
     const routeReceipt = await receipt('BROWSER_ROUTE_DECIDED', {
       contract: decision.contract,
@@ -336,6 +339,7 @@ async function api(req, res, pathname) {
       classification: decision.classification,
       providerPageEvidence,
       evidenceSources: evidence.sources,
+      operaHostSnapshot: runtimeMeta.operaHostSnapshot,
       grantId: grant.id,
       targetOrigin,
       operaRetryCount: recoveryState.operaRetryCount,
@@ -361,6 +365,7 @@ async function api(req, res, pathname) {
         decision: decisionAfterAttempt,
         previousDecision: decision,
         evidence,
+        runtimeMeta,
         recoveryState: { operaRetryCount: recoveryState.operaRetryCount, targetOrigin },
         receipts: [routeReceipt, retryReceipt]
       });
@@ -372,6 +377,7 @@ async function api(req, res, pathname) {
         error: `Selected browser route ${decision.route} is not executable as a browser provider.`,
         decision,
         evidence,
+        runtimeMeta,
         receipt: routeReceipt
       });
     }
@@ -435,6 +441,7 @@ async function api(req, res, pathname) {
         result,
         decision,
         evidence,
+        runtimeMeta,
         authority: { source: 'browser-grant', grantId: grant.id, scope, provider: executableProvider },
         receipts: [routeReceipt, callReceipt]
       });
