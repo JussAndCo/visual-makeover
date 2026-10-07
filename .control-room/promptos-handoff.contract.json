@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "contractId": "visual-makeover/promptos-handoff@v1",
+  "status": "active",
+  "sourceProduct": "Visual Makeover",
+  "sourceRepository": "jussray/visual-makeover",
+  "targetProduct": "PromptOS",
+  "targetRepository": "jussray/promptos",
+  "purpose": "Transfer an evidence-bound website makeover proposal into PromptOS instruction governance without transferring browser or execution authority.",
+  "authority": {
+    "mode": "advisory-only",
+    "executionAuthorized": false,
+    "registrationAuthority": false,
+    "mayWidenBrowserGrant": false,
+    "mayMutateDestination": false,
+    "mayPublish": false
+  },
+  "evidence": {
+    "requiredContract": "juss/browser-reality@v1",
+    "requiredFields": [
+      "captureId",
+      "evidenceFingerprintSha256",
+      "receipt"
+    ],
+    "rawBrowserPayloadAllowed": false,
+    "rawScreenshotBytesAllowed": false,
+    "browserGrantTokenAllowed": false,
+    "sessionTokenAllowed": false
+  },
+  "artifact": {
+    "status": "draft",
+    "fields": [
+      "contractId",
+      "status",
+      "sourceProduct",
+      "targetProduct",
+      "intent",
+      "authority",
+      "executionAuthorized",
+      "registrationAuthority",
+      "browserRealityContract",
+      "source",
+      "evidence",
+      "makeover",
+      "requestedVerification",
+      "authorityBoundary"
+    ]
+  },
+  "requestedVerification": [
+    "browser-reality",
+    "playwright"
+  ],
+  "authorityRule": "A PromptOS handoff is advisory input only. It cannot widen browser, repository, provider, deployment, publication, spending, or mutation authority.",
+  "rollback": "Revert the focused Visual Makeover handoff commits. No provider, browser, authentication, cookie, or user-data rollback is required."
+}
