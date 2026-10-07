@@ -61,12 +61,11 @@ test('merge only promotes proven values and later proven facts win', () => {
   assert.equal(merged.known.browserOnlyInteractionRequired, false);
 });
 
-test('runtime evidence fills unavailable provider booleans without claiming a live probe', () => {
+test('missing Opera runtime evidence stays unknown instead of becoming false', () => {
   const evidence = browserRuntimeEvidenceFromEnv({});
-  assert.equal(evidence.values.operaConnectorAvailable, false);
-  assert.equal(evidence.known.operaConnectorAvailable, true);
-  assert.equal(evidence.values.operaLiveSessionExposed, false);
-  assert.equal(evidence.known.operaLiveSessionExposed, true);
+  assert.equal(evidence.known.operaConnectorAvailable, false);
+  assert.equal(evidence.known.operaLiveSessionExposed, false);
+  assert.equal(evidence.runtimeMeta.operaHostSnapshot, 'disabled');
   assert.equal(evidence.values.alternateAuthenticatedBridgeAvailable, false);
   assert.equal(evidence.values.alternateAuthenticatedBridgeLive, false);
   assert.equal(evidence.values.genericBrowserAvailable, false);
@@ -80,6 +79,7 @@ test('configured Opera keeps live-session state unknown until separately proven'
   assert.equal(evidence.values.operaConnectorAvailable, true);
   assert.equal(evidence.known.operaConnectorAvailable, true);
   assert.equal(evidence.known.operaLiveSessionExposed, false);
+  assert.equal(evidence.runtimeMeta.operaHostSnapshot, 'disabled');
 });
 
 
@@ -106,4 +106,43 @@ test('fresh Opera host snapshot overrides env fallback without deciding authorit
   assert.equal(evidence.sources.operaConnectorAvailable, 'host:test-opera-host');
   assert.equal(evidence.sources.operaLiveSessionExposed, 'host:test-opera-host');
   assert.equal(evidence.known.directCapabilitySufficient, false);
+  assert.equal(evidence.runtimeMeta.operaHostSnapshot, 'fresh');
+});
+
+
+test('stale Opera host snapshot is ignored and reported stale', async t => {
+  const dir = await mkdtemp(join(tmpdir(), 'visual-makeover-host-stale-'));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const file = join(dir, 'opera-host-evidence.json');
+  const observed = Date.now() - 120_000;
+  await writeFile(file, JSON.stringify({
+    toolSurfaceAvailable: true,
+    liveSessionExposed: true,
+    source: 'stale-probe',
+    observedAt: new Date(observed).toISOString(),
+    expiresAt: new Date(observed + 60_000).toISOString()
+  }));
+
+  const evidence = browserRuntimeEvidenceFromEnv({ OPERA_HOST_EVIDENCE_FILE: file });
+  assert.equal(evidence.runtimeMeta.operaHostSnapshot, 'stale');
+  assert.equal(evidence.known.operaConnectorAvailable, false);
+  assert.equal(evidence.known.operaLiveSessionExposed, false);
+});
+
+test('overlong Opera host snapshot window is invalid', async t => {
+  const dir = await mkdtemp(join(tmpdir(), 'visual-makeover-host-invalid-'));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const file = join(dir, 'opera-host-evidence.json');
+  const observed = Date.now();
+  await writeFile(file, JSON.stringify({
+    toolSurfaceAvailable: true,
+    liveSessionExposed: false,
+    source: 'invalid-probe',
+    observedAt: new Date(observed).toISOString(),
+    expiresAt: new Date(observed + 10 * 60_000).toISOString()
+  }));
+
+  const evidence = browserRuntimeEvidenceFromEnv({ OPERA_HOST_EVIDENCE_FILE: file });
+  assert.equal(evidence.runtimeMeta.operaHostSnapshot, 'invalid');
+  assert.equal(evidence.known.operaConnectorAvailable, false);
 });
