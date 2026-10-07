@@ -4,3 +4,5 @@ data/*.jsonl
 playwright-report/
 test-results/
 .DS_Store
+
+data/opera-host-evidence.json
