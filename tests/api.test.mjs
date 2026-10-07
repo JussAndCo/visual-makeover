@@ -31,7 +31,7 @@ test('dual gate API issues app session, scoped browser grant, and allow-listed O
 
   child = spawn(process.execPath, ['src/server.mjs'], {
     cwd: new URL('..', import.meta.url),
-    env: { ...process.env, PORT: String(PORT), OPERA_BRIDGE_URL: `http://127.0.0.1:${BRIDGE_PORT}` },
+    env: { ...process.env, PORT: String(PORT), OPERA_BRIDGE_URL: `http://127.0.0.1:${BRIDGE_PORT}`, OPERA_LIVE_SESSION_EXPOSED: 'true' },
     stdio: 'ignore'
   });
   t.after(() => child?.kill());
@@ -48,31 +48,49 @@ test('dual gate API issues app session, scoped browser grant, and allow-listed O
   const grantRes = await fetch(`${base}/api/browser/grants`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', authorization: `Bearer ${signed.token}` },
-    body: JSON.stringify({ targetUrl: 'https://example.com/account', scopes: ['scrape:public','browser:read'], accepted: true, noticeVersion: health.noticeVersion })
+    body: JSON.stringify({ targetUrl: 'https://example.com/account', scopes: ['scrape:public','browser:read'], providers: ['opera'], accepted: true, noticeVersion: health.noticeVersion })
   });
   assert.equal(grantRes.status, 201);
   const granted = await grantRes.json();
   assert.equal(granted.grant.origin, 'https://example.com');
   assert.deepEqual(granted.grant.scopes, ['scrape:public','browser:read']);
+  assert.deepEqual(granted.grant.providers, ['opera']);
   assert.ok(granted.token);
 
 
-  const operaRes = await fetch(`${base}/api/browser/opera/call`, {
+  const operaRes = await fetch(`${base}/api/browser/inspect`, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
       authorization: `Bearer ${signed.token}`,
       'x-browser-grant': granted.token
     },
-    body: JSON.stringify({ tool: 'tab_content', targetUrl: 'https://example.com/account', args: { tabId: 1 } })
+    body: JSON.stringify({
+      tool: 'tab_content',
+      targetUrl: 'https://example.com/account',
+      args: { tabId: 1 },
+      recoveryEvidence: {
+        values: { directCapabilitySufficient: false, browserOnlyInteractionRequired: true },
+        known: { directCapabilitySufficient: true, browserOnlyInteractionRequired: true },
+        sources: { directCapabilitySufficient: 'test-task', browserOnlyInteractionRequired: 'test-task' }
+      },
+      providerPageEvidence: 'observed_ready',
+      operaRetryCount: 0
+    })
   });
   assert.equal(operaRes.status, 200);
   const opera = await operaRes.json();
+  assert.equal(opera.provider, 'opera');
   assert.equal(opera.result.ok, true);
   assert.equal(opera.result.echo.tool, 'tab_content');
   assert.deepEqual(opera.result.echo.args, { tabId: 1 });
   assert.equal(opera.result.echo.expectedOrigin, 'https://example.com');
-  assert.equal(opera.receipt.event, 'OPERA_CALL_COMPLETED');
+  assert.equal(opera.decision.route, 'opera');
+  assert.equal(opera.evidence.complete, true);
+  assert.equal(opera.evidence.known.operaLiveSessionExposed, true);
+  assert.equal(opera.authority.source, 'browser-grant');
+  assert.equal(opera.authority.provider, 'opera');
+  assert.equal(opera.receipts[1].event, 'BROWSER_INSPECT_COMPLETED');
 
   const status = await fetch(`${base}/api/browser/opera/status`).then(r => r.json());
   assert.equal(status.provider, 'opera-mcp');

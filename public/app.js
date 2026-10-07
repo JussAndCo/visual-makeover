@@ -1,6 +1,24 @@
 const $ = s => document.querySelector(s);
-const state = { session: null, grant: null, signals: null, plan: null, receipts: [] };
-const NOTICE_VERSION = '2026-10-06.v1';
+const RECOVERY_BOOLEAN_KEYS = [
+  'directCapabilitySufficient',
+  'browserOnlyInteractionRequired',
+  'operaConnectorAvailable',
+  'operaLiveSessionExposed',
+  'alternateAuthenticatedBridgeAvailable',
+  'alternateAuthenticatedBridgeLive',
+  'genericBrowserAvailable',
+  'genericBrowserSufficient'
+];
+const state = {
+  session: null,
+  grant: null,
+  signals: null,
+  plan: null,
+  receipts: [],
+  runtimeEvidence: null,
+  browserRoute: null
+};
+const NOTICE_VERSION = '2026-10-07.v2';
 
 async function api(path, options = {}) {
   const headers = { 'content-type': 'application/json', ...(options.headers || {}) };
@@ -8,7 +26,12 @@ async function api(path, options = {}) {
   if (state.grant?.token) headers['x-browser-grant'] = state.grant.token;
   const res = await fetch(path, { ...options, headers });
   const data = await res.json();
-  if (!res.ok) throw new Error(data.error || `Request failed: ${res.status}`);
+  if (!res.ok) {
+    const error = new Error(data.error || `Request failed: ${res.status}`);
+    error.data = data;
+    error.status = res.status;
+    throw error;
+  }
   return data;
 }
 
@@ -30,6 +53,32 @@ function selectedScopes() {
   return [...document.querySelectorAll('#notice input[type=checkbox]:checked')].map(x => x.value);
 }
 
+function selectedProviders() {
+  const scopes = selectedScopes();
+  return scopes.includes('browser:read') || scopes.includes('browser:navigate') ? ['opera'] : [];
+}
+
+function taskRecoveryEvidence() {
+  const scopes = state.grant?.scopes ?? selectedScopes();
+  const browserOnlyInteractionRequired = scopes.includes('browser:read') || scopes.includes('browser:navigate');
+  const directCapabilitySufficient = !browserOnlyInteractionRequired && scopes.includes('scrape:public');
+  return {
+    values: { directCapabilitySufficient, browserOnlyInteractionRequired },
+    known: { directCapabilitySufficient: true, browserOnlyInteractionRequired: true },
+    sources: {
+      directCapabilitySufficient: 'ui:granted-task-scope',
+      browserOnlyInteractionRequired: 'ui:granted-task-scope'
+    }
+  };
+}
+
+function renderEvidence(evidence = state.runtimeEvidence) {
+  if (!evidence) return;
+  const known = RECOVERY_BOOLEAN_KEYS.filter(key => evidence.known?.[key]).length;
+  $('#evidenceState').textContent = `${known}/8 recovery booleans known`;
+  $('#routeState').textContent = state.browserRoute ?? (evidence.complete ? 'route evidence complete' : 'route evidence pending');
+}
+
 $('#grantBtn').addEventListener('click', async () => {
   await ensureSession();
   $('#notice').showModal();
@@ -40,8 +89,9 @@ $('#acceptGrant').addEventListener('click', async e => {
   try {
     await ensureSession();
     const targetUrl = $('#url').value.trim();
-    const data = await api('/api/browser/grants', { method: 'POST', body: JSON.stringify({ targetUrl, scopes: selectedScopes(), accepted: true, noticeVersion: NOTICE_VERSION }) });
+    const data = await api('/api/browser/grants', { method: 'POST', body: JSON.stringify({ targetUrl, scopes: selectedScopes(), providers: selectedProviders(), accepted: true, noticeVersion: NOTICE_VERSION }) });
     state.grant = { token: data.token, ...data.grant };
+    renderEvidence(state.runtimeEvidence);
     $('#grantCheck').textContent = '✓';
     $('#authState').textContent = 'granted';
     $('#authState').classList.remove('muted');
@@ -63,6 +113,29 @@ $('#startBtn').addEventListener('click', async () => {
     const scrape = await api('/api/scrape', { method: 'POST', body: JSON.stringify({ url: $('#url').value.trim() }) });
     state.signals = scrape.signals; addReceipt(scrape.receipt);
     $('#browserAddress').textContent = new URL(state.signals.url).hostname;
+    if (state.grant.scopes.includes('browser:read')) {
+      try {
+        const captured = await api('/api/browser/inspect', {
+          method: 'POST',
+          body: JSON.stringify({
+            tool: 'tab_content',
+            targetUrl: $('#url').value.trim(),
+            args: {},
+            recoveryEvidence: taskRecoveryEvidence(),
+            providerPageEvidence: 'unknown',
+            operaRetryCount: 0
+          })
+        });
+        state.browserRoute = captured.decision.route;
+        captured.receipts?.forEach(addReceipt);
+        renderEvidence(captured.evidence);
+      } catch (browserError) {
+        state.browserRoute = browserError.data?.decision?.route
+          ?? (browserError.data?.evidence?.complete ? 'blocked' : 'evidence pending');
+        addReceipt(browserError.data?.receipt);
+        renderEvidence(browserError.data?.evidence ?? state.runtimeEvidence);
+      }
+    }
     const analyzed = await api('/api/analyze', { method: 'POST', body: JSON.stringify({ signals: state.signals }) });
     state.plan = analyzed.plan;
     $('#analysisState').textContent = 'ready'; $('#analysisState').classList.remove('muted');
@@ -76,12 +149,18 @@ $('#startBtn').addEventListener('click', async () => {
 
 $('#exportBtn').addEventListener('click', () => {
   if (!state.plan) return;
-  const bundle = { version: 1, generatedAt: new Date().toISOString(), source: state.signals, makeover: state.plan, authority: { origin: state.grant?.origin, scopes: state.grant?.scopes, grantExpiresAt: state.grant?.expiresAt }, note: 'This file is an export proposal. It does not publish changes.' };
+  const bundle = { version: 1, generatedAt: new Date().toISOString(), source: state.signals, makeover: state.plan, authority: { origin: state.grant?.origin, scopes: state.grant?.scopes, providers: state.grant?.providers, grantExpiresAt: state.grant?.expiresAt }, note: 'This file is an export proposal. It does not publish changes.' };
   const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: 'application/json' });
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'makeover.json'; a.click(); URL.revokeObjectURL(a.href);
 });
 
 function escapeHtml(s='') { return String(s).replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }
 
-api('/api/browser/opera/status').then(s => { $('#operaStatus').textContent = s.configured ? 'Opera runtime adapter configured' : 'Opera adapter ready · live attach is separate'; }).catch(() => { $('#operaStatus').textContent = 'Opera adapter status unavailable'; });
+api('/api/browser/opera/status').then(s => {
+  state.runtimeEvidence = s.runtimeEvidence;
+  $('#operaStatus').textContent = s.configured ? 'Opera runtime adapter configured' : 'Opera adapter ready · live attach is separate';
+  renderEvidence(s.runtimeEvidence);
+}).catch(() => {
+  $('#operaStatus').textContent = 'Opera adapter status unavailable';
+});
 ensureSession().catch(()=>{});

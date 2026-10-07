@@ -21,7 +21,7 @@ async function waitForServer() {
 test('browser recovery preserves provider-ready evidence and never self-authorizes execution', async t => {
   child = spawn(process.execPath, ['src/server.mjs'], {
     cwd: new URL('..', import.meta.url),
-    env: { ...process.env, PORT: String(PORT) },
+    env: { ...process.env, PORT: String(PORT), OPERA_CONNECTOR_AVAILABLE: 'true', OPERA_LIVE_SESSION_EXPOSED: 'false' },
     stdio: 'ignore'
   });
   t.after(() => child?.kill());
@@ -40,17 +40,23 @@ test('browser recovery preserves provider-ready evidence and never self-authoriz
       authorization: `Bearer ${signed.token}`
     },
     body: JSON.stringify({
-      directCapabilitySufficient: false,
-      browserOnlyInteractionRequired: true,
-      operaConnectorAvailable: true,
-      operaLiveSessionExposed: false,
+      recoveryEvidence: {
+        values: {
+          directCapabilitySufficient: false,
+          browserOnlyInteractionRequired: true
+        },
+        known: {
+          directCapabilitySufficient: true,
+          browserOnlyInteractionRequired: true
+        },
+        sources: {
+          directCapabilitySufficient: 'test-task',
+          browserOnlyInteractionRequired: 'test-task'
+        }
+      },
       operaConnectorError: 'Browser not connected',
       operaRetryCount: 1,
-      providerPageEvidence: 'observed_ready',
-      alternateAuthenticatedBridgeAvailable: false,
-      alternateAuthenticatedBridgeLive: false,
-      genericBrowserAvailable: false,
-      genericBrowserSufficient: false
+      providerPageEvidence: 'observed_ready'
     })
   });
   assert.equal(response.status, 200);
@@ -59,6 +65,10 @@ test('browser recovery preserves provider-ready evidence and never self-authoriz
   assert.equal(body.decision.repeatProviderSetupInstructions, false);
   assert.equal(body.decision.retryOperaBridge, false);
   assert.equal(body.decision.executionAuthorized, false);
+  assert.equal(body.evidence.complete, true);
+  assert.equal(body.evidence.values.operaConnectorAvailable, true);
+  assert.equal(body.evidence.values.operaLiveSessionExposed, false);
+  assert.equal(body.evidence.sources.operaConnectorAvailable, 'env:OPERA_CONNECTOR_AVAILABLE');
   assert.equal(body.receipt.event, 'BROWSER_ROUTE_DECIDED');
 
   const ledger = await readFile(new URL('../data/receipts.jsonl', import.meta.url), 'utf8');
@@ -89,6 +99,32 @@ test('browser recovery rejects ambiguous evidence instead of inferring capabilit
     headers: { 'content-type': 'application/json', authorization: `Bearer ${signed.token}` },
     body: JSON.stringify({ providerPageEvidence: 'observed_ready', operaRetryCount: 0 })
   });
-  assert.equal(response.status, 400);
-  assert.match((await response.json()).error, /explicit boolean capability states/);
+  assert.equal(response.status, 409);
+  const body = await response.json();
+  assert.match(body.error, /Browser recovery evidence incomplete/);
+  assert.equal(Object.keys(body.evidence.values).length, 8);
+  assert.equal(body.evidence.known.directCapabilitySufficient, false);
+  assert.equal(body.evidence.known.browserOnlyInteractionRequired, false);
+  assert.ok(body.evidence.missing.includes('directCapabilitySufficient'));
+});
+
+
+test('recovery schema publishes the eight required boolean names', async t => {
+  const port = 4205;
+  const localBase = `http://127.0.0.1:${port}`;
+  const proc = spawn(process.execPath, ['src/server.mjs'], {
+    cwd: new URL('..', import.meta.url),
+    env: { ...process.env, PORT: String(port) },
+    stdio: 'ignore'
+  });
+  t.after(() => proc.kill());
+  for (let i = 0; i < 40; i++) {
+    try { if ((await fetch(`${localBase}/api/health`)).ok) break; } catch {}
+    await new Promise(r => setTimeout(r, 50));
+  }
+  const schema = await fetch(`${localBase}/api/browser/recovery/schema`).then(r => r.json());
+  assert.equal(schema.contract, 'juss/browser-recovery-evidence@v1');
+  assert.equal(schema.requiredBooleans.length, 8);
+  assert.ok(schema.requiredBooleans.includes('operaLiveSessionExposed'));
+  assert.ok(schema.requiredBooleans.includes('genericBrowserSufficient'));
 });

@@ -37,7 +37,8 @@
           </div>
         </div>
         <div class="capabilities"><span>tab content</span><span>accessibility</span><span>screenshot</span><span>navigate</span><span>global tabs/history blocked</span></div>
-        <p class="fine browser-truth"><b>Provider setup and live attachment are separate.</b> A connector handshake failure does not erase an installed, enabled, permissioned Opera plugin. Browser execution still requires the explicit grant.</p>
+        <div class="trustline route-proof"><span id="evidenceState">0/8 recovery booleans known</span><b>·</b><span id="routeState">route evidence pending</span></div>
+        <p class="fine browser-truth"><b>Provider setup and live attachment are separate.</b> A connector handshake failure does not erase an installed, enabled, permissioned Opera plugin. All eight recovery booleans must be known before provider routing; unknown is never treated as false. Browser execution still requires the explicit grant.</p>
       </article>
 
       <article class="panel control-card">
@@ -66,10 +67,10 @@
     <form method="dialog" class="notice-card">
       <p class="kicker">AI BROWSER NOTICE</p>
       <h2>Choose what the AI may do.</h2>
-      <p>Visual Makeover can read the public site without your logged-in session. Browser access is separate. The grant below is scoped to this site and expires automatically.</p>
+      <p>Visual Makeover can read the public site without your logged-in session. Browser access is separate. The grant below is scoped to this site, expires automatically, and authorizes <b>Opera only</b> for browser actions. A fallback provider requires a new explicit provider grant.</p>
       <label class="scope"><input type="checkbox" value="scrape:public" checked /> <span><b>Public scrape</b><small>Fetch public HTML and extract visual/content signals.</small></span></label>
-      <label class="scope"><input type="checkbox" value="browser:read" /> <span><b>Read granted Opera tab</b><small>Read tab content/accessibility or screenshots for the granted origin. Browser-wide tabs and history stay blocked.</small></span></label>
-      <label class="scope"><input type="checkbox" value="browser:navigate" /> <span><b>Navigate Opera</b><small>Allow navigation to the granted site. No form submission or typing capability is included.</small></span></label>
+      <label class="scope"><input type="checkbox" value="browser:read" /> <span><b>Read granted Opera tab</b><small>Read tab content/accessibility or screenshots for the granted origin through Opera only. Browser-wide tabs and history stay blocked.</small></span></label>
+      <label class="scope"><input type="checkbox" value="browser:navigate" /> <span><b>Navigate Opera</b><small>Allow same-origin navigation through Opera only. No form submission or typing capability is included.</small></span></label>
       <div class="notice-actions"><button value="cancel" class="ghost">Cancel</button><button id="acceptGrant" value="default" class="primary">Accept selected access</button></div>
     </form>
   </dialog>

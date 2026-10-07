@@ -20,7 +20,26 @@ A logged-in app session is **not** browser authorization. A browser grant is **n
 - browser-global reads such as `list_tabs` and `history`: blocked until a separate global-read authority exists
 - mutate/type/submit: intentionally unsupported in this starter
 
-`src/browser/recovery.mjs` ports the proven FCR contract `juss/browser-bridge-recovery@v1`. It keeps provider setup evidence separate from runtime attachment evidence. An installed/enabled/permissioned Opera plugin with a missing live session is `BLOCKED_CONNECTOR_BRIDGE`; it does not trigger repeated setup instructions. The policy re-probes Opera at most once, then may route to another authenticated bridge or a bounded generic browser capability. Every route still returns `executionAuthorized: false` until the normal human authority gate is satisfied.
+`src/browser/recovery.mjs` ports the proven FCR contract `juss/browser-bridge-recovery@v1`. It keeps provider setup evidence separate from runtime attachment evidence. An installed/enabled/permissioned Opera plugin with a missing live session is `BLOCKED_CONNECTOR_BRIDGE`; it does not trigger repeated setup instructions. The policy re-probes Opera at most once, then may route to another authenticated bridge or a bounded generic browser capability. Every route still returns `executionAuthorized: false` because routing is not authority.
+
+`src/browser/evidence.mjs` implements `juss/browser-recovery-evidence@v1`. The eight required booleans are:
+
+- `directCapabilitySufficient`
+- `browserOnlyInteractionRequired`
+- `operaConnectorAvailable`
+- `operaLiveSessionExposed`
+- `alternateAuthenticatedBridgeAvailable`
+- `alternateAuthenticatedBridgeLive`
+- `genericBrowserAvailable`
+- `genericBrowserSufficient`
+
+Each boolean carries a separate `known` flag and source. Unknown fields are materialized for schema stability but cannot participate in routing until `known: true`. Server runtime facts override conflicting caller facts.
+
+Browser grants also contain a provider allowlist: `opera`, `authenticated_browser_bridge`, and/or `generic_browser_automation`. The decision engine may recommend a fallback provider, but `POST /api/browser/inspect` performs a second provider check against the grant before execution. Current UI grants Opera only. This preserves the separation:
+
+`route decision ≠ provider authority ≠ browser grant ≠ execution receipt`.
+
+Alternate/generic bridge adapters use the same origin-proof contract as Opera and remain limited to the allow-listed read/navigation tools.
 
 The repo does not collect browser cookies or passwords. `OPERA_BRIDGE_URL` is an owner-controlled standalone-runtime adapter that translates `{tool,args}` to the browser host used in the deployment environment. This avoids pretending a ChatGPT plugin transport is itself a public embeddable API.
 

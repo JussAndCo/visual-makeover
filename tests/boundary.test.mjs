@@ -40,6 +40,7 @@ test('browser grant is bound to its app session and global Opera reads are block
     body: JSON.stringify({
       targetUrl: 'https://example.com/account',
       scopes: ['browser:read'],
+      providers: ['opera'],
       accepted: true,
       noticeVersion: health.noticeVersion
     })
@@ -47,7 +48,7 @@ test('browser grant is bound to its app session and global Opera reads are block
   assert.equal(grantRes.status, 201);
   const grant = await grantRes.json();
 
-  const stolen = await fetch(`${base}/api/browser/opera/call`, {
+  const stolen = await fetch(`${base}/api/browser/inspect`, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
@@ -59,7 +60,7 @@ test('browser grant is bound to its app session and global Opera reads are block
   assert.equal(stolen.status, 403);
   assert.match((await stolen.json()).error, /another app session/);
 
-  const globalRead = await fetch(`${base}/api/browser/opera/call`, {
+  const globalRead = await fetch(`${base}/api/browser/inspect`, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',

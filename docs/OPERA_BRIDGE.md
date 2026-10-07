@@ -35,3 +35,10 @@ Visual Makeover never trusts a caller-supplied tab ID as proof of origin. Every 
 ```
 
 Visual Makeover rejects a missing or mismatched origin proof. Browser-wide `list_tabs` and `history` are intentionally blocked by the current origin-scoped grant model. Add a distinct global-read authority class before exposing them.
+
+
+## Provider authority
+
+Recovery may select a different browser provider, but a route decision cannot expand the user's grant. Browser grants carry an explicit provider allowlist. The default Visual Makeover UI authorizes `opera` only.
+
+If recovery selects `authenticated_browser_bridge` or `generic_browser_automation`, execution is denied with 403 unless the active grant explicitly names that provider. A fallback therefore requires a fresh or separately issued provider grant. All providers remain origin-scoped and limited to `tab_content`, `screenshot`, and same-origin `go_to_page`.

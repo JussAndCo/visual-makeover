@@ -27,6 +27,9 @@ with sync_playwright() as p:
     assert not page.locator("input[value='browser:navigate']").is_checked()
     assert page.get_by_text("Browser-wide tabs and history stay blocked.").is_visible()
     assert page.get_by_text("Provider setup and live attachment are separate.").is_visible()
+    assert page.get_by_text("0/8 recovery booleans known").is_visible()
+    assert page.get_by_text("unknown is never treated as false.").is_visible()
+    assert page.get_by_text("A fallback provider requires a new explicit provider grant.").is_visible()
     page.screenshot(path=str(ROOT / "playwright-home.png"), full_page=True)
     browser.close()
 

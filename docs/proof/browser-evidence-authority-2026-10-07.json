@@ -1,0 +1,35 @@
+{
+  "auditDate": "2026-10-07",
+  "subject": "complete browser recovery evidence + provider authority",
+  "parentHead": "a95ace0b099057f4b9546299a09462cb1c319314",
+  "detachedCandidate": "d516f6d4f2ce7d16404fc13e6805a4750633dbd7",
+  "contracts": [
+    "juss/browser-bridge-recovery@v1",
+    "juss/browser-recovery-evidence@v1"
+  ],
+  "requiredBooleans": [
+    "directCapabilitySufficient",
+    "browserOnlyInteractionRequired",
+    "operaConnectorAvailable",
+    "operaLiveSessionExposed",
+    "alternateAuthenticatedBridgeAvailable",
+    "alternateAuthenticatedBridgeLive",
+    "genericBrowserAvailable",
+    "genericBrowserSufficient"
+  ],
+  "authority": {
+    "routeDecisionIsAuthority": false,
+    "browserGrantSessionBound": true,
+    "browserGrantOriginScoped": true,
+    "browserGrantCapabilityScoped": true,
+    "providerAllowlistRequired": true,
+    "defaultUiBrowserProvider": "opera",
+    "fallbackInheritsOperaGrant": false
+  },
+  "localProof": {
+    "recoveryEvidenceTests": "6/6 PASS",
+    "scopedBridgeTests": "2/2 PASS",
+    "playwrightConsentAndProviderNotice": "PASS"
+  },
+  "remoteCi": "UNKNOWN until authoritative branch move and GitHub status evidence"
+}

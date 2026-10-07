@@ -5,17 +5,25 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { assertPublicUrl, originOf } from './security.mjs';
 import { callOperaBridge, requiredScopeForOperaTool, OPERA_CAPABILITIES } from './browser/opera-provider.mjs';
+import { callScopedBrowserBridge } from './browser/scoped-bridge.mjs';
 import { verifyCloudflareAccessJwt } from './auth-cloudflare-access.mjs';
 import { decideBrowserBridgeRecovery } from './browser/recovery.mjs';
+import {
+  BROWSER_RECOVERY_BOOLEAN_KEYS,
+  normalizeBrowserRecoveryEvidence,
+  mergeBrowserRecoveryEvidence,
+  browserRuntimeEvidenceFromEnv
+} from './browser/evidence.mjs';
 
 const ROOT = normalize(join(fileURLToPath(new URL('..', import.meta.url)), '..'));
 const PUBLIC = join(ROOT, 'public');
 const PORT = Number(process.env.PORT || 4173);
-const NOTICE_VERSION = '2026-10-06.v1';
+const NOTICE_VERSION = '2026-10-07.v2';
 const MAX_BODY = 64 * 1024;
 const MAX_SCRAPE_BYTES = 1_500_000;
 const sessions = new Map();
 const grants = new Map();
+const BROWSER_PROVIDERS = Object.freeze(['opera', 'authenticated_browser_bridge', 'generic_browser_automation']);
 
 const mime = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.svg': 'image/svg+xml' };
 
@@ -50,13 +58,14 @@ function requireSession(req) {
   return session;
 }
 
-function requireGrant(req, { scope, origin, sessionId }) {
+function requireGrant(req, { scope, origin, sessionId, provider }) {
   const token = req.headers['x-browser-grant'];
   const grant = token && grants.get(token);
   if (!grant || grant.expiresAt < Date.now()) throw Object.assign(new Error('Browser grant required or expired.'), { status: 403 });
   if (sessionId && grant.sessionId !== sessionId) throw Object.assign(new Error('Browser grant belongs to another app session.'), { status: 403 });
   if (!grant.scopes.includes(scope)) throw Object.assign(new Error(`Grant lacks ${scope}.`), { status: 403 });
   if (origin && grant.origin !== origin) throw Object.assign(new Error('Grant is scoped to another origin.'), { status: 403 });
+  if (provider && !grant.providers.includes(provider)) throw Object.assign(new Error(`Browser grant does not authorize provider ${provider}.`), { status: 403 });
   return grant;
 }
 
@@ -125,44 +134,90 @@ async function scrape(rawUrl) {
   } finally { clearTimeout(timer); }
 }
 
+function resolveBrowserRecovery(body) {
+  const providerEvidenceValues = ['unknown', 'founder_reported_ready', 'observed_ready', 'contradicted'];
+  const providerPageEvidence = body.providerPageEvidence ?? 'unknown';
+  if (!providerEvidenceValues.includes(providerPageEvidence)) {
+    return { error: { status: 400, message: 'Invalid providerPageEvidence.' } };
+  }
+  if (!Number.isInteger(body.operaRetryCount) || body.operaRetryCount < 0 || body.operaRetryCount > 1) {
+    return { error: { status: 400, message: 'operaRetryCount must be 0 or 1.' } };
+  }
+  if (body.operaConnectorError != null && (typeof body.operaConnectorError !== 'string' || body.operaConnectorError.length > 500)) {
+    return { error: { status: 400, message: 'Invalid operaConnectorError.' } };
+  }
+
+  let callerEvidence;
+  try {
+    callerEvidence = normalizeBrowserRecoveryEvidence(body.recoveryEvidence ?? body.evidence ?? body);
+  } catch (error) {
+    return { error: { status: 400, message: error.message } };
+  }
+
+  let runtimeEvidence;
+  try {
+    runtimeEvidence = browserRuntimeEvidenceFromEnv(process.env);
+  } catch (error) {
+    return { error: { status: 500, message: error.message } };
+  }
+
+  const evidence = mergeBrowserRecoveryEvidence(callerEvidence, runtimeEvidence);
+  if (!evidence.complete) {
+    return {
+      error: {
+        status: 409,
+        message: `Browser recovery evidence incomplete: ${evidence.missing.join(', ')}.`
+      },
+      evidence
+    };
+  }
+
+  const decision = decideBrowserBridgeRecovery({
+    ...evidence.values,
+    providerPageEvidence,
+    operaConnectorError: body.operaConnectorError ?? null,
+    operaRetryCount: body.operaRetryCount
+  });
+  return { evidence, decision, providerPageEvidence };
+}
+
 async function api(req, res, pathname) {
   if (pathname === '/api/health' && req.method === 'GET') return json(res, 200, { ok: true, noticeVersion: NOTICE_VERSION });
-  if (pathname === '/api/browser/opera/status' && req.method === 'GET') return json(res, 200, {
-    provider: 'opera-mcp',
-    configured: Boolean(process.env.OPERA_BRIDGE_URL),
-    capabilities: OPERA_CAPABILITIES,
-    note: 'Plugin installation/permission and live browser-session exposure are separate states.'
-  });
+  if (pathname === '/api/browser/recovery/schema' && req.method === 'GET') {
+    return json(res, 200, {
+      contract: 'juss/browser-recovery-evidence@v1',
+      requiredBooleans: BROWSER_RECOVERY_BOOLEAN_KEYS,
+      grantProviders: BROWSER_PROVIDERS
+    });
+  }
+
+  if (pathname === '/api/browser/opera/status' && req.method === 'GET') {
+    const runtimeEvidence = browserRuntimeEvidenceFromEnv(process.env);
+    return json(res, 200, {
+      provider: 'opera-mcp',
+      configured: Boolean(process.env.OPERA_BRIDGE_URL),
+      capabilities: OPERA_CAPABILITIES,
+      runtimeEvidence,
+      note: 'Plugin installation/permission and live browser-session exposure are separate states.'
+    });
+  }
 
   if (pathname === '/api/browser/recovery' && req.method === 'POST') {
     requireSession(req);
     const b = await bodyJson(req);
-    const evidenceValues = ['unknown', 'founder_reported_ready', 'observed_ready', 'contradicted'];
-    const booleanKeys = [
-      'directCapabilitySufficient',
-      'browserOnlyInteractionRequired',
-      'operaConnectorAvailable',
-      'operaLiveSessionExposed',
-      'alternateAuthenticatedBridgeAvailable',
-      'alternateAuthenticatedBridgeLive',
-      'genericBrowserAvailable',
-      'genericBrowserSufficient'
-    ];
-    if (!evidenceValues.includes(b.providerPageEvidence ?? 'unknown')) return json(res, 400, { error: 'Invalid providerPageEvidence.' });
-    if (booleanKeys.some(key => typeof b[key] !== 'boolean')) return json(res, 400, { error: 'Browser recovery evidence requires explicit boolean capability states.' });
-    if (!Number.isInteger(b.operaRetryCount) || b.operaRetryCount < 0 || b.operaRetryCount > 1) return json(res, 400, { error: 'operaRetryCount must be 0 or 1.' });
-    if (b.operaConnectorError != null && (typeof b.operaConnectorError !== 'string' || b.operaConnectorError.length > 500)) return json(res, 400, { error: 'Invalid operaConnectorError.' });
-    const decision = decideBrowserBridgeRecovery({ ...b, providerPageEvidence: b.providerPageEvidence ?? 'unknown' });
+    const resolved = resolveBrowserRecovery(b);
+    if (resolved.error) return json(res, resolved.error.status, { error: resolved.error.message, evidence: resolved.evidence });
+    const { evidence, decision, providerPageEvidence } = resolved;
     const r = await receipt('BROWSER_ROUTE_DECIDED', {
       contract: decision.contract,
+      evidenceContract: evidence.contract,
       route: decision.route,
       classification: decision.classification,
-      providerPageEvidence: b.providerPageEvidence ?? 'unknown',
-      operaConnectorAvailable: Boolean(b.operaConnectorAvailable),
-      operaLiveSessionExposed: Boolean(b.operaLiveSessionExposed),
+      providerPageEvidence,
+      evidenceSources: evidence.sources,
       executionAuthorized: decision.executionAuthorized
     });
-    return json(res, 200, { decision, receipt: r });
+    return json(res, 200, { decision, evidence, receipt: r });
   }
 
   if (pathname === '/api/auth/session' && req.method === 'POST') {
@@ -203,11 +258,15 @@ async function api(req, res, pathname) {
     const allowedScopes = ['browser:read', 'browser:navigate', 'scrape:public'];
     const scopes = [...new Set(Array.isArray(b.scopes) ? b.scopes : [])].filter(x => allowedScopes.includes(x));
     if (!scopes.length) return json(res, 400, { error: 'At least one scope is required.' });
+    const hasBrowserScope = scopes.includes('browser:read') || scopes.includes('browser:navigate');
+    const providers = [...new Set(Array.isArray(b.providers) ? b.providers : [])].filter(x => BROWSER_PROVIDERS.includes(x));
+    if (hasBrowserScope && !providers.length) return json(res, 400, { error: 'At least one explicitly authorized browser provider is required.' });
+    if (!hasBrowserScope && providers.length) return json(res, 400, { error: 'Browser providers require a browser scope.' });
     const token = randomBytes(24).toString('base64url');
-    const grant = { id: randomUUID(), sessionId: session.id, origin, scopes, createdAt: Date.now(), expiresAt: Date.now() + 15 * 60_000 };
+    const grant = { id: randomUUID(), sessionId: session.id, origin, scopes, providers, createdAt: Date.now(), expiresAt: Date.now() + 15 * 60_000 };
     grants.set(token, grant);
-    const r = await receipt('BROWSER_GRANT_CREATED', { grantId: grant.id, origin, scopes, expiresAt: new Date(grant.expiresAt).toISOString() });
-    return json(res, 201, { token, grant: { id: grant.id, origin, scopes, expiresAt: grant.expiresAt }, receipt: r });
+    const r = await receipt('BROWSER_GRANT_CREATED', { grantId: grant.id, origin, scopes, providers, expiresAt: new Date(grant.expiresAt).toISOString() });
+    return json(res, 201, { token, grant: { id: grant.id, origin, scopes, providers, expiresAt: grant.expiresAt }, receipt: r });
   }
 
   if (pathname === '/api/scrape' && req.method === 'POST') {
@@ -228,23 +287,99 @@ async function api(req, res, pathname) {
     return json(res, 200, { plan, provider: 'local-heuristic', note: 'Swap this adapter for PromptOS/your model router without changing browser authority.' });
   }
 
-  if (pathname === '/api/browser/opera/call' && req.method === 'POST') {
+  if (pathname === '/api/browser/inspect' && req.method === 'POST') {
     const session = requireSession(req);
     const b = await bodyJson(req);
     const scope = requiredScopeForOperaTool(b.tool);
-    if (!b.targetUrl) return json(res, 400, { error: 'targetUrl is required for Opera calls.' });
+    if (!b.targetUrl) return json(res, 400, { error: 'targetUrl is required for browser inspection.' });
     const targetOrigin = originOf(b.targetUrl);
     if (b.tool === 'go_to_page') {
-      if (!b.args?.url || originOf(b.args.url) !== targetOrigin) return json(res, 400, { error: 'Opera navigation must stay on the granted origin.' });
+      if (!b.args?.url || originOf(b.args.url) !== targetOrigin) return json(res, 400, { error: 'Browser navigation must stay on the granted origin.' });
     }
+
     const grant = requireGrant(req, { scope, origin: targetOrigin, sessionId: session.id });
+    const resolved = resolveBrowserRecovery(b);
+    if (resolved.error) return json(res, resolved.error.status, { error: resolved.error.message, evidence: resolved.evidence });
+    const { evidence, decision, providerPageEvidence } = resolved;
+
+    const routeReceipt = await receipt('BROWSER_ROUTE_DECIDED', {
+      contract: decision.contract,
+      evidenceContract: evidence.contract,
+      route: decision.route,
+      classification: decision.classification,
+      providerPageEvidence,
+      evidenceSources: evidence.sources,
+      grantId: grant.id,
+      executionAuthorized: decision.executionAuthorized
+    });
+
+    const executableProvider = BROWSER_PROVIDERS.includes(decision.route) ? decision.route : null;
+    if (!executableProvider) {
+      return json(res, 409, {
+        error: `Selected browser route ${decision.route} is not executable as a browser provider.`,
+        decision,
+        evidence,
+        receipt: routeReceipt
+      });
+    }
+
+    requireGrant(req, { scope, origin: targetOrigin, sessionId: session.id, provider: executableProvider });
+
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 15000);
     try {
-      const result = await callOperaBridge({ bridgeUrl: process.env.OPERA_BRIDGE_URL, bridgeToken: process.env.OPERA_BRIDGE_TOKEN, tool: b.tool, args: b.args, expectedOrigin: targetOrigin, signal: controller.signal });
-      const r = await receipt('OPERA_CALL_COMPLETED', { grantId: grant.id, tool: b.tool, origin: grant.origin });
-      return json(res, 200, { result, receipt: r });
+      let result;
+      if (executableProvider === 'opera') {
+        result = await callOperaBridge({
+          bridgeUrl: process.env.OPERA_BRIDGE_URL,
+          bridgeToken: process.env.OPERA_BRIDGE_TOKEN,
+          tool: b.tool,
+          args: b.args,
+          expectedOrigin: targetOrigin,
+          signal: controller.signal
+        });
+      } else if (executableProvider === 'authenticated_browser_bridge') {
+        result = await callScopedBrowserBridge({
+          bridgeUrl: process.env.ALT_AUTH_BROWSER_BRIDGE_URL,
+          bridgeToken: process.env.ALT_AUTH_BROWSER_BRIDGE_TOKEN,
+          provider: executableProvider,
+          tool: b.tool,
+          args: b.args,
+          expectedOrigin: targetOrigin,
+          signal: controller.signal
+        });
+      } else {
+        result = await callScopedBrowserBridge({
+          bridgeUrl: process.env.GENERIC_BROWSER_BRIDGE_URL,
+          bridgeToken: process.env.GENERIC_BROWSER_BRIDGE_TOKEN,
+          provider: executableProvider,
+          tool: b.tool,
+          args: b.args,
+          expectedOrigin: targetOrigin,
+          signal: controller.signal
+        });
+      }
+
+      const callReceipt = await receipt('BROWSER_INSPECT_COMPLETED', {
+        grantId: grant.id,
+        route: decision.route,
+        provider: executableProvider,
+        tool: b.tool,
+        origin: grant.origin
+      });
+      return json(res, 200, {
+        provider: executableProvider,
+        result,
+        decision,
+        evidence,
+        authority: { source: 'browser-grant', grantId: grant.id, scope, provider: executableProvider },
+        receipts: [routeReceipt, callReceipt]
+      });
     } finally { clearTimeout(timer); }
+  }
+
+  if (pathname === '/api/browser/opera/call' && req.method === 'POST') {
+    return json(res, 410, { error: 'Use /api/browser/inspect so recovery evidence and browser authority are evaluated together.' });
   }
 
   return false;
