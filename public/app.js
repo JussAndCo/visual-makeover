@@ -16,7 +16,10 @@ const state = {
   plan: null,
   receipts: [],
   runtimeEvidence: null,
-  browserRoute: null
+  browserRoute: null,
+  captureIds: [],
+  analysisEvidence: [],
+  promptOsHandoff: null
 };
 const NOTICE_VERSION = '2026-10-07.v2';
 
@@ -72,6 +75,21 @@ function taskRecoveryEvidence() {
   };
 }
 
+function rememberCapture(capture) {
+  if (!capture?.id) return;
+  if (!state.captureIds.includes(capture.id)) state.captureIds.push(capture.id);
+}
+
+function browserInspectBody(tool) {
+  return {
+    tool,
+    targetUrl: $('#url').value.trim(),
+    args: {},
+    recoveryEvidence: taskRecoveryEvidence(),
+    providerPageEvidence: 'unknown'
+  };
+}
+
 function renderEvidence(evidence = state.runtimeEvidence) {
   if (!evidence) return;
   const known = RECOVERY_BOOLEAN_KEYS.filter(key => evidence.known?.[key]).length;
@@ -113,21 +131,29 @@ $('#startBtn').addEventListener('click', async () => {
     const scrape = await api('/api/scrape', { method: 'POST', body: JSON.stringify({ url: $('#url').value.trim() }) });
     state.signals = scrape.signals; addReceipt(scrape.receipt);
     $('#browserAddress').textContent = new URL(state.signals.url).hostname;
+    state.captureIds = [];
     if (state.grant.scopes.includes('browser:read')) {
       try {
         const captured = await api('/api/browser/inspect', {
           method: 'POST',
-          body: JSON.stringify({
-            tool: 'tab_content',
-            targetUrl: $('#url').value.trim(),
-            args: {},
-            recoveryEvidence: taskRecoveryEvidence(),
-            providerPageEvidence: 'unknown'
-          })
+          body: JSON.stringify(browserInspectBody('tab_content'))
         });
         state.browserRoute = captured.decision.route;
+        rememberCapture(captured.capture);
         captured.receipts?.forEach(addReceipt);
         renderEvidence(captured.evidence);
+
+        try {
+          const screenshot = await api('/api/browser/inspect', {
+            method: 'POST',
+            body: JSON.stringify(browserInspectBody('screenshot'))
+          });
+          rememberCapture(screenshot.capture);
+          screenshot.receipts?.forEach(addReceipt);
+        } catch (screenshotError) {
+          if (Array.isArray(screenshotError.data?.receipts)) screenshotError.data.receipts.forEach(addReceipt);
+          else addReceipt(screenshotError.data?.receipt);
+        }
       } catch (browserError) {
         state.browserRoute = browserError.data?.decision?.route
           ?? (browserError.data?.evidence?.complete ? 'blocked' : 'evidence pending');
@@ -136,9 +162,23 @@ $('#startBtn').addEventListener('click', async () => {
         renderEvidence(browserError.data?.evidence ?? state.runtimeEvidence);
       }
     }
-    const analyzed = await api('/api/analyze', { method: 'POST', body: JSON.stringify({ signals: state.signals }) });
+    const analyzed = await api('/api/analyze', {
+      method: 'POST',
+      body: JSON.stringify({ signals: state.signals, captureIds: state.captureIds })
+    });
     state.plan = analyzed.plan;
-    $('#analysisState').textContent = 'ready'; $('#analysisState').classList.remove('muted');
+    state.analysisEvidence = analyzed.evidence ?? [];
+    addReceipt(analyzed.receipt);
+
+    const handoff = await api('/api/handoff/promptos', {
+      method: 'POST',
+      body: JSON.stringify({ signals: state.signals, captureIds: state.captureIds })
+    });
+    state.promptOsHandoff = handoff.artifact;
+    addReceipt(handoff.receipt);
+
+    $('#analysisState').textContent = state.captureIds.length ? `ready · ${state.captureIds.length} browser proof` : 'ready · scrape evidence';
+    $('#analysisState').classList.remove('muted');
     $('#resultEmpty').classList.add('hidden'); $('#result').classList.remove('hidden');
     $('#result').innerHTML = `<h3>${escapeHtml(state.plan.summary)}</h3><p>${escapeHtml(state.plan.direction)}</p><ul>${state.plan.recommendations.map(r => `<li><b>${escapeHtml(r.area)}</b> · ${escapeHtml(r.change)}</li>`).join('')}</ul>`;
     $('#exportBtn').disabled = false;
@@ -149,7 +189,7 @@ $('#startBtn').addEventListener('click', async () => {
 
 $('#exportBtn').addEventListener('click', () => {
   if (!state.plan) return;
-  const bundle = { version: 1, generatedAt: new Date().toISOString(), source: state.signals, makeover: state.plan, authority: { origin: state.grant?.origin, scopes: state.grant?.scopes, providers: state.grant?.providers, grantExpiresAt: state.grant?.expiresAt }, note: 'This file is an export proposal. It does not publish changes.' };
+  const bundle = { version: 2, generatedAt: new Date().toISOString(), source: state.signals, browserEvidence: state.analysisEvidence, makeover: state.plan, promptOsHandoff: state.promptOsHandoff, authority: { origin: state.grant?.origin, scopes: state.grant?.scopes, providers: state.grant?.providers, grantExpiresAt: state.grant?.expiresAt }, note: 'This file is an evidence-bound proposal. It does not publish changes or transfer browser authority.' };
   const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: 'application/json' });
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'makeover.json'; a.click(); URL.revokeObjectURL(a.href);
 });
