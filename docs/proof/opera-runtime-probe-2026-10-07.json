@@ -2,7 +2,11 @@
   "auditDate": "2026-10-07",
   "subject": "Opera runtime probe",
   "toolSurfaceObserved": true,
-  "liveSessionState": "not_exposed",
-  "transportClassification": "blocked_connector_bridge",
-  "executionAuthorized": false
+  "firstProbe": "blocked_connector_bridge",
+  "secondProbe": "blocked_connector_bridge",
+  "secondProbeContentRead": false,
+  "retryBudgetExhausted": true,
+  "providerSetupEvidence": "preserved",
+  "executionAuthorized": false,
+  "hostEvidenceTests": "7/7 PASS"
 }
