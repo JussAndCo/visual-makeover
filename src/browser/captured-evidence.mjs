@@ -5,7 +5,6 @@ import {
 } from './browser-reality-receipt.mjs';
 
 const MAX_RENDERED_TEXT = 12000;
-const MAX_OBSERVATION_TEXT = 900;
 const SENSITIVE_KEY = /cookie|token|secret|password|authorization|credential|session(id)?|jwt/i;
 
 function collectText(value, out, depth = 0) {
@@ -81,13 +80,6 @@ export function buildCapturedBrowserEvidence({
     });
   } else {
     observations.push({ state: 'UNKNOWN', statement: 'Browser tool result was not recognized for evidence extraction.' });
-  }
-
-  if (renderedText) {
-    observations.push({
-      state: 'VERIFIED',
-      statement: `Rendered text excerpt available for analysis: ${renderedText.slice(0, MAX_OBSERVATION_TEXT)}`
-    });
   }
 
   const fingerprint = fingerprintBrowserRealityEvidence({
