@@ -1,12 +1,31 @@
 {
   "auditDate": "2026-10-07",
-  "subject": "Opera runtime probe",
-  "toolSurfaceObserved": true,
+  "subject": "Opera runtime + host evidence audit",
+  "verifiedCodeHead": "606e75d7f37d0f40196f9ae8dca7f6edbcfc4ea3",
+  "connectorToolSurfaceObserved": true,
   "firstProbe": "blocked_connector_bridge",
   "secondProbe": "blocked_connector_bridge",
   "secondProbeContentRead": false,
   "retryBudgetExhausted": true,
   "providerSetupEvidence": "preserved",
   "executionAuthorized": false,
-  "hostEvidenceTests": "7/7 PASS"
+  "recoveryEvidence": {
+    "missingOperaConfig": "UNKNOWN",
+    "hostSnapshotStates": [
+      "fresh",
+      "stale",
+      "missing",
+      "invalid",
+      "disabled"
+    ],
+    "maxFreshnessWindowMinutes": 5,
+    "freshHostEvidenceOverridesEnvFor": [
+      "operaConnectorAvailable",
+      "operaLiveSessionExposed"
+    ],
+    "staleOrInvalidHostEvidenceOverridesEnv": false,
+    "runtimeMetaSurfacedInRouteResponsesAndReceipts": true
+  },
+  "localFocusedEvidenceRegression": "12/12 PASS",
+  "remoteCi": "UNKNOWN_NO_STATUSES"
 }
