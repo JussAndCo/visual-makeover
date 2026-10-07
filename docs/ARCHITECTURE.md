@@ -33,7 +33,7 @@ A logged-in app session is **not** browser authorization. A browser grant is **n
 - `genericBrowserAvailable`
 - `genericBrowserSufficient`
 
-Each boolean carries a separate `known` flag and source. Unknown fields are materialized for schema stability but cannot participate in routing until `known: true`. Server runtime facts override conflicting caller facts.
+Each boolean carries a separate `known` flag and source. Unknown fields are materialized for schema stability but cannot participate in routing until `known: true`. Server runtime facts override conflicting caller facts. The Opera retry counter is not part of caller evidence: it is server-owned state keyed by app session + target origin, with a 15-minute recovery TTL. An inspect attempt may consume the one connector-handshake retry and receipts that transition; client-supplied `operaRetryCount` is rejected.
 
 Browser grants also contain a provider allowlist: `opera`, `authenticated_browser_bridge`, and/or `generic_browser_automation`. The decision engine may recommend a fallback provider, but `POST /api/browser/inspect` performs a second provider check against the grant before execution. Current UI grants Opera only. This preserves the separation:
 

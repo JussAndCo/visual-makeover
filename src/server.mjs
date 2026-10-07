@@ -23,6 +23,8 @@ const MAX_BODY = 64 * 1024;
 const MAX_SCRAPE_BYTES = 1_500_000;
 const sessions = new Map();
 const grants = new Map();
+const recoveryStates = new Map();
+const RECOVERY_STATE_TTL_MS = 15 * 60_000;
 const BROWSER_PROVIDERS = Object.freeze(['opera', 'authenticated_browser_bridge', 'generic_browser_automation']);
 
 const mime = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.svg': 'image/svg+xml' };
@@ -134,14 +136,28 @@ async function scrape(rawUrl) {
   } finally { clearTimeout(timer); }
 }
 
-function resolveBrowserRecovery(body) {
+function recoveryStateFor(sessionId, origin) {
+  const key = `${sessionId}|${origin}`;
+  const existing = recoveryStates.get(key);
+  if (!existing || Date.now() - existing.updatedAt > RECOVERY_STATE_TTL_MS) {
+    const fresh = { key, operaRetryCount: 0, updatedAt: Date.now() };
+    recoveryStates.set(key, fresh);
+    return fresh;
+  }
+  return existing;
+}
+
+function resolveBrowserRecovery(body, operaRetryCount) {
   const providerEvidenceValues = ['unknown', 'founder_reported_ready', 'observed_ready', 'contradicted'];
   const providerPageEvidence = body.providerPageEvidence ?? 'unknown';
   if (!providerEvidenceValues.includes(providerPageEvidence)) {
     return { error: { status: 400, message: 'Invalid providerPageEvidence.' } };
   }
-  if (!Number.isInteger(body.operaRetryCount) || body.operaRetryCount < 0 || body.operaRetryCount > 1) {
-    return { error: { status: 400, message: 'operaRetryCount must be 0 or 1.' } };
+  if (Object.prototype.hasOwnProperty.call(body, 'operaRetryCount')) {
+    return { error: { status: 400, message: 'operaRetryCount is server-owned and must not be supplied by the client.' } };
+  }
+  if (!Number.isInteger(operaRetryCount) || operaRetryCount < 0 || operaRetryCount > 1) {
+    return { error: { status: 500, message: 'Invalid server recovery retry state.' } };
   }
   if (body.operaConnectorError != null && (typeof body.operaConnectorError !== 'string' || body.operaConnectorError.length > 500)) {
     return { error: { status: 400, message: 'Invalid operaConnectorError.' } };
@@ -176,7 +192,7 @@ function resolveBrowserRecovery(body) {
     ...evidence.values,
     providerPageEvidence,
     operaConnectorError: body.operaConnectorError ?? null,
-    operaRetryCount: body.operaRetryCount
+    operaRetryCount
   });
   return { evidence, decision, providerPageEvidence };
 }
@@ -203,9 +219,12 @@ async function api(req, res, pathname) {
   }
 
   if (pathname === '/api/browser/recovery' && req.method === 'POST') {
-    requireSession(req);
+    const session = requireSession(req);
     const b = await bodyJson(req);
-    const resolved = resolveBrowserRecovery(b);
+    if (!b.targetUrl) return json(res, 400, { error: 'targetUrl is required to scope browser recovery state.' });
+    const targetOrigin = originOf(b.targetUrl);
+    const recoveryState = recoveryStateFor(session.id, targetOrigin);
+    const resolved = resolveBrowserRecovery(b, recoveryState.operaRetryCount);
     if (resolved.error) return json(res, resolved.error.status, { error: resolved.error.message, evidence: resolved.evidence });
     const { evidence, decision, providerPageEvidence } = resolved;
     const r = await receipt('BROWSER_ROUTE_DECIDED', {
@@ -215,9 +234,16 @@ async function api(req, res, pathname) {
       classification: decision.classification,
       providerPageEvidence,
       evidenceSources: evidence.sources,
+      targetOrigin,
+      operaRetryCount: recoveryState.operaRetryCount,
       executionAuthorized: decision.executionAuthorized
     });
-    return json(res, 200, { decision, evidence, receipt: r });
+    return json(res, 200, {
+      decision,
+      evidence,
+      recoveryState: { operaRetryCount: recoveryState.operaRetryCount, targetOrigin },
+      receipt: r
+    });
   }
 
   if (pathname === '/api/auth/session' && req.method === 'POST') {
@@ -298,7 +324,8 @@ async function api(req, res, pathname) {
     }
 
     const grant = requireGrant(req, { scope, origin: targetOrigin, sessionId: session.id });
-    const resolved = resolveBrowserRecovery(b);
+    const recoveryState = recoveryStateFor(session.id, targetOrigin);
+    const resolved = resolveBrowserRecovery(b, recoveryState.operaRetryCount);
     if (resolved.error) return json(res, resolved.error.status, { error: resolved.error.message, evidence: resolved.evidence });
     const { evidence, decision, providerPageEvidence } = resolved;
 
@@ -310,8 +337,34 @@ async function api(req, res, pathname) {
       providerPageEvidence,
       evidenceSources: evidence.sources,
       grantId: grant.id,
+      targetOrigin,
+      operaRetryCount: recoveryState.operaRetryCount,
       executionAuthorized: decision.executionAuthorized
     });
+
+    if (decision.classification === 'BLOCKED_CONNECTOR_BRIDGE' && decision.retryOperaBridge) {
+      recoveryState.operaRetryCount = 1;
+      recoveryState.updatedAt = Date.now();
+      const retryReceipt = await receipt('OPERA_REPROBE_BUDGET_CONSUMED', {
+        grantId: grant.id,
+        targetOrigin,
+        operaRetryCount: recoveryState.operaRetryCount
+      });
+      const decisionAfterAttempt = decideBrowserBridgeRecovery({
+        ...evidence.values,
+        providerPageEvidence,
+        operaConnectorError: b.operaConnectorError ?? null,
+        operaRetryCount: recoveryState.operaRetryCount
+      });
+      return json(res, 409, {
+        error: 'Opera connector handshake retry budget consumed; live session is still not exposed.',
+        decision: decisionAfterAttempt,
+        previousDecision: decision,
+        evidence,
+        recoveryState: { operaRetryCount: recoveryState.operaRetryCount, targetOrigin },
+        receipts: [routeReceipt, retryReceipt]
+      });
+    }
 
     const executableProvider = BROWSER_PROVIDERS.includes(decision.route) ? decision.route : null;
     if (!executableProvider) {
@@ -369,6 +422,7 @@ async function api(req, res, pathname) {
         });
       }
 
+      if (executableProvider === 'opera') recoveryStates.delete(recoveryState.key);
       const callReceipt = await receipt('BROWSER_INSPECT_COMPLETED', {
         grantId: grant.id,
         route: decision.route,

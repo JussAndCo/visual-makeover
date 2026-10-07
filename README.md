@@ -37,7 +37,7 @@ Visual Makeover reuses the portfolio browser-recovery contract `juss/browser-bri
 
 Recovery also uses `juss/browser-recovery-evidence@v1`. All eight routing booleans are always materialized, but each has a separate `known` flag and source. Missing facts therefore appear as `value: false, known: false`, never as an inferred false. Server-owned runtime evidence overrides caller claims for configured provider availability.
 
-Browser execution goes through `POST /api/browser/inspect`. It requires complete recovery evidence, the session-bound origin/scope grant, **and an explicit provider allowlist inside that grant**. The current UI grants `opera` only. If recovery selects `authenticated_browser_bridge` or `generic_browser_automation`, that route may be reported, but it cannot execute until a new grant explicitly names that provider. Fallback never inherits Opera authority.
+Browser execution goes through `POST /api/browser/inspect`. It requires complete recovery evidence, the session-bound origin/scope grant, **and an explicit provider allowlist inside that grant**. The single Opera handshake retry budget is server-owned, scoped to the app session + target origin, expires with the recovery window, and cannot be reset by client input. The current UI grants `opera` only. If recovery selects `authenticated_browser_bridge` or `generic_browser_automation`, that route may be reported, but it cannot execute until a new grant explicitly names that provider. Fallback never inherits Opera authority.
 
 ## Production identity
 

@@ -122,8 +122,7 @@ $('#startBtn').addEventListener('click', async () => {
             targetUrl: $('#url').value.trim(),
             args: {},
             recoveryEvidence: taskRecoveryEvidence(),
-            providerPageEvidence: 'unknown',
-            operaRetryCount: 0
+            providerPageEvidence: 'unknown'
           })
         });
         state.browserRoute = captured.decision.route;
@@ -132,7 +131,8 @@ $('#startBtn').addEventListener('click', async () => {
       } catch (browserError) {
         state.browserRoute = browserError.data?.decision?.route
           ?? (browserError.data?.evidence?.complete ? 'blocked' : 'evidence pending');
-        addReceipt(browserError.data?.receipt);
+        if (Array.isArray(browserError.data?.receipts)) browserError.data.receipts.forEach(addReceipt);
+        else addReceipt(browserError.data?.receipt);
         renderEvidence(browserError.data?.evidence ?? state.runtimeEvidence);
       }
     }

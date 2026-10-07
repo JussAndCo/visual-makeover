@@ -61,8 +61,7 @@ function genericRecoveryBody() {
         genericBrowserSufficient: 'test-task'
       }
     },
-    providerPageEvidence: 'observed_ready',
-    operaRetryCount: 1
+    providerPageEvidence: 'observed_ready'
   };
 }
 

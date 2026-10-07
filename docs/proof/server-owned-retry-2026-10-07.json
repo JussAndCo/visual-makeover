@@ -1,0 +1,21 @@
+{
+  "auditDate": "2026-10-07",
+  "subject": "server-owned browser recovery retry state",
+  "parentHead": "c5cf4bfa8c82b40de5e96088bed86fef6379f1ab",
+  "detachedCandidate": "9a3e3e33b0bcb082bf78ed322ff9088e84470193",
+  "invariants": {
+    "clientControlsOperaRetryCount": false,
+    "retryStateKey": "app-session + target-origin",
+    "retryStateTtlMinutes": 15,
+    "maxOperaHandshakeRecoveryAttempts": 1,
+    "retryConsumptionReceiptedAs": "OPERA_REPROBE_BUDGET_CONSUMED",
+    "successfulOperaInspectResetsRecoveryState": true,
+    "routeDecisionStillNotAuthority": true
+  },
+  "testCoverageAdded": [
+    "first blocked inspect consumes retry budget",
+    "second blocked inspect does not offer another retry",
+    "client-supplied operaRetryCount is rejected"
+  ],
+  "verification": "detached remote readback complete; full Node suite and remote CI still require executable CI evidence"
+}

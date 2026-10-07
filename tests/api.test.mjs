@@ -74,8 +74,7 @@ test('dual gate API issues app session, scoped browser grant, and allow-listed O
         known: { directCapabilitySufficient: true, browserOnlyInteractionRequired: true },
         sources: { directCapabilitySufficient: 'test-task', browserOnlyInteractionRequired: 'test-task' }
       },
-      providerPageEvidence: 'observed_ready',
-      operaRetryCount: 0
+      providerPageEvidence: 'observed_ready'
     })
   });
   assert.equal(operaRes.status, 200);
