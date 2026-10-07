@@ -39,6 +39,14 @@ Recovery also uses `juss/browser-recovery-evidence@v1`. All eight routing boolea
 
 Browser execution goes through `POST /api/browser/inspect`. It requires complete recovery evidence, the session-bound origin/scope grant, **and an explicit provider allowlist inside that grant**. The single Opera handshake retry budget is server-owned, scoped to the app session + target origin, expires with the recovery window, and cannot be reset by client input. The current UI grants `opera` only. If recovery selects `authenticated_browser_bridge` or `generic_browser_automation`, that route may be reported, but it cannot execute until a new grant explicitly names that provider. Fallback never inherits Opera authority.
 
+## PromptOS handoff
+
+Successful browser reads are converted into `juss/browser-reality@v1` receipts with sanitized URLs and SHA-256 evidence fingerprints. Screenshot bytes are reduced to a digest; raw screenshot bytes are not exported. Bounded rendered text may inform the local Visual Makeover analyzer, but raw browser payloads, session tokens, and browser grant tokens do not cross the PromptOS boundary.
+
+`POST /api/handoff/promptos` produces a **draft advisory artifact** under `visual-makeover/promptos-handoff@v1`. It carries evidence receipts/fingerprints plus the makeover proposal. It has `executionAuthorized=false` and `registrationAuthority=false`; PromptOS remains a standalone governance peer and receives no browser authority.
+
+The machine-readable boundary is `.control-room/promptos-handoff.contract.json`.
+
 ## Production identity
 
 Production uses **Cloudflare Access** as the identity gate. Configure `CF_ACCESS_TEAM_DOMAIN` and `CF_ACCESS_AUD`, place the app behind the matching Access application, and Visual Makeover verifies the `CF-Access-Jwt-Assertion` signature, issuer, audience, and expiry before issuing its short-lived app session. The app never receives the user's password.
@@ -67,7 +75,7 @@ npm run test:playwright
 - add per-domain scraping policy + rate limits + robots/terms evaluation
 - feed fresh Opera host-runtime evidence through `OPERA_HOST_EVIDENCE_FILE` when available; keep missing/stale facts unknown
 - connect a live Opera/host bridge when browser-only evidence is required; preserve verified plugin/permission state if the runtime attach is temporarily blocked
-- add screenshot/DOM evidence as inputs to PromptOS
+- register the PromptOS-side peer acceptance contract when that runtime is ready to consume Visual Makeover handoffs
 - add patch/export adapters for GitHub, Figma, or site builders
 - keep publishing as a separate explicit write authorization
 
