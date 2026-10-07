@@ -112,7 +112,11 @@ test('fallback browser provider requires its own explicit provider grant', async
     body: JSON.stringify(genericRecoveryBody())
   });
   assert.equal(denied.status, 403);
-  assert.match((await denied.json()).error, /does not authorize provider generic_browser_automation/);
+  const deniedBody = await denied.json();
+  assert.match(deniedBody.error, /does not authorize provider generic_browser_automation/);
+  assert.equal(deniedBody.decision.route, 'generic_browser_automation');
+  assert.equal(deniedBody.evidence.complete, true);
+  assert.equal(deniedBody.receipt.event, 'BROWSER_ROUTE_DECIDED');
 
   const genericGrant = await createGrant(session.token, health.noticeVersion, ['generic_browser_automation']);
   const allowed = await fetch(`${base}/api/browser/inspect`, {

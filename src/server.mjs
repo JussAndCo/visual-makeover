@@ -323,7 +323,16 @@ async function api(req, res, pathname) {
       });
     }
 
-    requireGrant(req, { scope, origin: targetOrigin, sessionId: session.id, provider: executableProvider });
+    try {
+      requireGrant(req, { scope, origin: targetOrigin, sessionId: session.id, provider: executableProvider });
+    } catch (error) {
+      return json(res, error.status || 403, {
+        error: error.message,
+        decision,
+        evidence,
+        receipt: routeReceipt
+      });
+    }
 
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 15000);
