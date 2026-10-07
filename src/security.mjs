@@ -27,6 +27,16 @@ export async function assertPublicUrl(raw) {
   return url;
 }
 
+export function assertBrowserTargetUrl(raw) {
+  const url = new URL(raw);
+  if (!['http:', 'https:'].includes(url.protocol)) throw new Error('Only http(s) browser targets are allowed.');
+  if (url.username || url.password) throw new Error('Browser target URLs must not contain credentials.');
+  const host = url.hostname.toLowerCase();
+  if (host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local')) throw new Error('Local/private browser targets are blocked.');
+  if (net.isIP(host) && isPrivateIp(host)) throw new Error('Private IP browser targets are blocked.');
+  return url;
+}
+
 export function originOf(raw) {
-  return new URL(raw).origin;
+  return assertBrowserTargetUrl(raw).origin;
 }

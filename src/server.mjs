@@ -49,10 +49,11 @@ function requireSession(req) {
   return session;
 }
 
-function requireGrant(req, { scope, origin }) {
+function requireGrant(req, { scope, origin, sessionId }) {
   const token = req.headers['x-browser-grant'];
   const grant = token && grants.get(token);
   if (!grant || grant.expiresAt < Date.now()) throw Object.assign(new Error('Browser grant required or expired.'), { status: 403 });
+  if (sessionId && grant.sessionId !== sessionId) throw Object.assign(new Error('Browser grant belongs to another app session.'), { status: 403 });
   if (!grant.scopes.includes(scope)) throw Object.assign(new Error(`Grant lacks ${scope}.`), { status: 403 });
   if (origin && grant.origin !== origin) throw Object.assign(new Error('Grant is scoped to another origin.'), { status: 403 });
   return grant;
@@ -77,7 +78,7 @@ function heuristicMakeover(signals) {
   const recommendations = [];
   if (!signals.hasViewport) recommendations.push({ priority: 'high', area: 'responsive', change: 'Add a viewport meta tag before any visual redesign.' });
   if (!signals.headings.length) recommendations.push({ priority: 'high', area: 'hierarchy', change: 'Create a visible H1-led hierarchy so the page has a clear visual spine.' });
-  if (signals.colors.length > 8) recommendations.push({ priority: 'medium', area: 'palette', change: 'Collapse the palette into 3â€“5 semantic tokens and reserve accent colors for actions.' });
+  if (signals.colors.length > 8) recommendations.push({ priority: 'medium', area: 'palette', change: 'Collapse the palette into 3Ã¢â‚¬â€œ5 semantic tokens and reserve accent colors for actions.' });
   recommendations.push({ priority: 'medium', area: 'layout', change: 'Use a consistent max-width, spacing scale, and section rhythm before adding decorative effects.' });
   recommendations.push({ priority: 'medium', area: 'interaction', change: 'Give primary actions one dominant treatment and preserve visible keyboard focus states.' });
   return {
@@ -160,7 +161,7 @@ async function api(req, res, pathname) {
     const b = await bodyJson(req);
     if (b.noticeVersion !== NOTICE_VERSION || b.accepted !== true) return json(res, 400, { error: 'Current browser notice must be accepted.' });
     const origin = originOf(b.targetUrl);
-    const allowedScopes = ['browser:read', 'browser:navigate', 'scrape:public', 'export:makeover'];
+    const allowedScopes = ['browser:read', 'browser:navigate', 'scrape:public'];
     const scopes = [...new Set(Array.isArray(b.scopes) ? b.scopes : [])].filter(x => allowedScopes.includes(x));
     if (!scopes.length) return json(res, 400, { error: 'At least one scope is required.' });
     const token = randomBytes(24).toString('base64url');
@@ -171,10 +172,10 @@ async function api(req, res, pathname) {
   }
 
   if (pathname === '/api/scrape' && req.method === 'POST') {
-    requireSession(req);
+    const session = requireSession(req);
     const b = await bodyJson(req);
     const origin = originOf(b.url);
-    const grant = requireGrant(req, { scope: 'scrape:public', origin });
+    const grant = requireGrant(req, { scope: 'scrape:public', origin, sessionId: session.id });
     const signals = await scrape(b.url);
     const r = await receipt('PUBLIC_SCRAPE_COMPLETED', { grantId: grant.id, origin, url: signals.url });
     return json(res, 200, { signals, receipt: r });
@@ -189,15 +190,19 @@ async function api(req, res, pathname) {
   }
 
   if (pathname === '/api/browser/opera/call' && req.method === 'POST') {
-    requireSession(req);
+    const session = requireSession(req);
     const b = await bodyJson(req);
     const scope = requiredScopeForOperaTool(b.tool);
-    const targetOrigin = b.targetUrl ? originOf(b.targetUrl) : undefined;
-    const grant = requireGrant(req, { scope, origin: targetOrigin });
+    if (!b.targetUrl) return json(res, 400, { error: 'targetUrl is required for Opera calls.' });
+    const targetOrigin = originOf(b.targetUrl);
+    if (b.tool === 'go_to_page') {
+      if (!b.args?.url || originOf(b.args.url) !== targetOrigin) return json(res, 400, { error: 'Opera navigation must stay on the granted origin.' });
+    }
+    const grant = requireGrant(req, { scope, origin: targetOrigin, sessionId: session.id });
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 15000);
     try {
-      const result = await callOperaBridge({ bridgeUrl: process.env.OPERA_BRIDGE_URL, bridgeToken: process.env.OPERA_BRIDGE_TOKEN, tool: b.tool, args: b.args, signal: controller.signal });
+      const result = await callOperaBridge({ bridgeUrl: process.env.OPERA_BRIDGE_URL, bridgeToken: process.env.OPERA_BRIDGE_TOKEN, tool: b.tool, args: b.args, expectedOrigin: targetOrigin, signal: controller.signal });
       const r = await receipt('OPERA_CALL_COMPLETED', { grantId: grant.id, tool: b.tool, origin: grant.origin });
       return json(res, 200, { result, receipt: r });
     } finally { clearTimeout(timer); }
@@ -208,25 +213,25 @@ async function api(req, res, pathname) {
 
 async function staticFile(req, res, pathname) {
   const rel = pathname === '/' ? 'index.html' : pathname.replace(/^\//, '');
-  const target = normalize(join(PUBLIC,™[
-JNÂˆYˆ
-]\™Ù]œİ\ÕÚ]
-P“PÊJH™]\›ˆœÛÛŠ™\ËËÈ\œ›Üˆ	Ñ›Ü˜šY[‹‰ÈJNÂˆHÂˆÛÛœİÛÛ[H]ØZ]™XYš[J\™Ù]
-NÂˆ™\ËÜš]RXY
-ŒÈ	ØÛÛ[]\IÎˆZ[YVÙ^˜[YJ\™Ù]
-WH	Ø\XØ][Û‹ÛØİ]\İ™X[IÈJNÂˆ™\Ë™[™
-ÛÛ[
-NÂˆHØ]ÚÂˆÛÛœİ[H]ØZ]™XYš[J›Ú[ŠP“PË	Ú[™^š[	ÊJNÂˆ™\ËÜš]RXY
-ŒÈ	ØÛÛ[]\IÎˆ	İ^Ú[ÈÚ\œÙ]]]‹N	ÈJNÂˆ™\Ë™[™
+  const target = normalize(join(PUBLIC,â„¢[
+JNÃ‚Ë†YË†
+]\â„¢Ã™]Å“Ã\ÂÃ•Ãš]
+Pâ€œPÃŠJHâ„¢]\â€ºË†Å“Ã›Ã›Å â„¢\Ã‹Ã‹Ãˆ\Å“â€ºÃœÅ½Ë†	Ã‘â€ºÃœËœÅ¡Y[â€¹â€°ÃˆJNÃ‚Ë†Å¾HÃ‚Ë†Ã›Ã›Å“ÃÃ›Ã›Â[ÂH]Ã˜Z]â„¢XYÅ¡[J\â„¢Ã™]
+NÃ‚Ë†â„¢\Ã‹ÂÃœÅ¡]RXY
+Å’Ãˆ	Ã˜Ã›Ã›Â[Â]\IÃË†Z[YVÃ™^Ëœ[YJ\â„¢Ã™]
+WH	Ã˜\XÃ˜][Ã›â€¹Ã›Ã˜Ã]\Ãâ„¢X[IÃˆJNÃ‚Ë†â„¢\Ã‹â„¢[â„¢
+Ã›Ã›Â[Â
+NÃ‚Ë†HÃ˜]ÃšÃ‚Ë†Ã›Ã›Å“Ã[H]Ã˜Z]â„¢XYÅ¡[Jâ€ºÃš[Å Pâ€œPÃ‹	Ãš[â„¢^Å¡[	ÃŠJNÃ‚Ë†â„¢\Ã‹ÂÃœÅ¡]RXY
+Å’Ãˆ	Ã˜Ã›Ã›Â[Â]\IÃË†	Ã^Ãš[ÃˆÃš\Å“Ã™]]]â€¹N	ÃˆJNÃ‚Ë†â„¢\Ã‹â„¢[â„¢
 [
-NÂˆBŸB‚˜ÛÛœİÙ\™\ˆH˜Ü™X]TÙ\™\Š\Ş[˜È
-™\K™\ÊHOˆÂˆÛÛœİ\›H™]ÈT“
-™\K\›‹ËÉÜ™\KšXY\œËšÜİ	ÛØØ[Üİ	ßX
-NÂˆHÂˆYˆ
-\›œ]˜[YKœİ\ÕÚ]
-	ËØ\KÉÊJHÂˆÛÛœİ[™YH]ØZ]\J™\K™\Ë\›œ]˜[YJNÂˆYˆ
-[™YOOH˜[ÙJHœÛÛŠ™\ËÈ\œ›Üˆ	Ó›İ›İ[™‰ÈJNÂˆH[ÙH]ØZ]İ]XÑš[J™\K™\Ë\›œ]˜[YJNÂˆHØ]Ú
-\œŠHÂˆœÛÛŠ™\Ë\œ‹œİ]\ÈÈ\œ›Üˆ\œ‹›Y\ÜØYÙH	Ô™\]Y\İ˜Z[Y‰ÈJNÂˆBŸJNÂ‚œÙ\™\‹›\İ[ŠÔ•	ÌLËŒŒŒIË
+NÃ‚Ë†BÅ¸Bâ€šËœÃ›Ã›Å“ÃÃ™\Ââ„¢\Ë†HËœÃœâ„¢X]TÃ™\Ââ„¢\Å \Ã[ËœÃˆ
+â„¢\Kâ„¢\ÃŠHOË†Ã‚Ë†Ã›Ã›Å“Ã\â€ºHâ„¢]ÃˆTâ€œ
+â„¢\KÂ\â€ºâ€¹Ã‹Ã‰Ãœâ„¢\KÅ¡XY\Å“Ã‹Å¡ÃœÃ	Ã›Ã˜Ã˜[ÃœÃ	ÃŸX
+NÃ‚Ë†Å¾HÃ‚Ë†YË†
+\â€ºÅ“]Ëœ[YKÅ“Ã\ÂÃ•Ãš]
+	Ã‹Ã˜\KÃ‰ÃŠJHÃ‚Ë†Ã›Ã›Å“Ã[â„¢YH]Ã˜Z]\Jâ„¢\Kâ„¢\Ã‹\â€ºÅ“]Ëœ[YJNÃ‚Ë†YË†
+[â„¢YOOHËœ[Ã™JHÅ“Ã›Ã›Å â„¢\Ã‹Ãˆ\Å“â€ºÃœÅ½Ë†	Ã“â€ºÃâ€ºÃ[â„¢â€°ÃˆJNÃ‚Ë†H[Ã™H]Ã˜Z]Ã]XÃ‘Å¡[Jâ„¢\Kâ„¢\Ã‹\â€ºÅ“]Ëœ[YJNÃ‚Ë†HÃ˜]Ãš
+\Å“Å HÃ‚Ë†Å“Ã›Ã›Å â„¢\Ã‹\Å“â€¹Å“Ã]\ÃˆÃˆ\Å“â€ºÃœÅ½Ë†\Å“â€¹â€ºY\ÃœÃ˜YÃ™H	Ã”â„¢\]Y\ÃËœZ[Yâ€°ÃˆJNÃ‚Ë†BÅ¸JNÃ‚â€šÅ“Ã™\Ââ„¢\â€¹â€º\Ã[Å Ã”â€¢	ÃŒLÂÃ‹Å’Å’Å’IÃ‹
 
-HOˆÛÛœÛÛK›ÙÊš\İX[XZÙ[İ™\ˆÛˆ‹ËÌLËŒŒŒN‰ÔÔ•X
-JNÂ
+HOË†Ã›Ã›Å“Ã›Ã›Kâ€ºÃ™ÃŠÅ¡\ÃX[XZÃ™[Ãâ„¢\Ë†Ã›Ë†â€¹Ã‹ÃŒLÂÃ‹Å’Å’Å’Nâ€°Ã”Ã”â€¢X
+JNÃ‚

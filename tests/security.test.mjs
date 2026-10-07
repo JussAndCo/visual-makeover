@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { isPrivateIp, originOf } from '../src/security.mjs';
+import { isPrivateIp, originOf, assertBrowserTargetUrl } from '../src/security.mjs';
 import { requiredScopeForOperaTool } from '../src/browser/opera-provider.mjs';
 
 test('private IPv4 ranges are blocked', () => {
@@ -16,5 +16,15 @@ test('Opera tool scopes are capability-specific', () => {
   assert.equal(requiredScopeForOperaTool('tab_content'), 'browser:read');
   assert.equal(requiredScopeForOperaTool('screenshot'), 'browser:read');
   assert.equal(requiredScopeForOperaTool('go_to_page'), 'browser:navigate');
+  assert.throws(() => requiredScopeForOperaTool('list_tabs'));
+  assert.throws(() => requiredScopeForOperaTool('history'));
   assert.throws(() => requiredScopeForOperaTool('type_password'));
+});
+
+
+test('browser targets reject local/private and credential-bearing URLs', () => {
+  assert.throws(() => assertBrowserTargetUrl('http://127.0.0.1/admin'));
+  assert.throws(() => assertBrowserTargetUrl('http://localhost:3000'));
+  assert.throws(() => assertBrowserTargetUrl('https://user:pass@example.com'));
+  assert.equal(assertBrowserTargetUrl('https://example.com/path').origin, 'https://example.com');
 });

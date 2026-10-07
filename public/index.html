@@ -36,7 +36,7 @@
             <div class="preview-cards"><i></i><i></i><i></i></div>
           </div>
         </div>
-        <div class="capabilities"><span>tabs</span><span>history</span><span>DOM/accessibility</span><span>screenshot</span><span>navigate</span></div>
+        <div class="capabilities"><span>tab content</span><span>accessibility</span><span>screenshot</span><span>navigate</span><span>global tabs/history blocked</span></div>
       </article>
 
       <article class="panel control-card">
@@ -67,7 +67,7 @@
       <h2>Choose what the AI may do.</h2>
       <p>Visual Makeover can read the public site without your logged-in session. Browser access is separate. The grant below is scoped to this site and expires automatically.</p>
       <label class="scope"><input type="checkbox" value="scrape:public" checked /> <span><b>Public scrape</b><small>Fetch public HTML and extract visual/content signals.</small></span></label>
-      <label class="scope"><input type="checkbox" value="browser:read" /> <span><b>Read Opera tab</b><small>Read tab content, accessibility tree, history, or screenshots through the configured bridge.</small></span></label>
+      <label class="scope"><input type="checkbox" value="browser:read" /> <span><b>Read granted Opera tab</b><small>Read tab content/accessibility or screenshots for the granted origin. Browser-wide tabs and history stay blocked.</small></span></label>
       <label class="scope"><input type="checkbox" value="browser:navigate" /> <span><b>Navigate Opera</b><small>Allow navigation to the granted site. No form submission or typing capability is included.</small></span></label>
       <div class="notice-actions"><button value="cancel" class="ghost">Cancel</button><button id="acceptGrant" value="default" class="primary">Accept selected access</button></div>
     </form>

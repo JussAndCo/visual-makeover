@@ -23,7 +23,7 @@ test('dual gate API issues app session, scoped browser grant, and allow-listed O
     for await (const chunk of req) chunks.push(chunk);
     const body = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
     res.writeHead(200, { 'content-type': 'application/json' });
-    res.end(JSON.stringify({ ok: true, echo: body }));
+    res.end(JSON.stringify({ origin: 'https://example.com', data: { ok: true, echo: body } }));
   });
   await new Promise(resolve => bridge.listen(BRIDGE_PORT, '127.0.0.1', resolve));
   t.after(() => bridge?.close());
@@ -61,13 +61,14 @@ test('dual gate API issues app session, scoped browser grant, and allow-listed O
       authorization: `Bearer ${signed.token}`,
       'x-browser-grant': granted.token
     },
-    body: JSON.stringify({ tool: 'tab_content', args: { tabId: 1 } })
+    body: JSON.stringify({ tool: 'tab_content', targetUrl: 'https://example.com/account', args: { tabId: 1 } })
   });
   assert.equal(operaRes.status, 200);
   const opera = await operaRes.json();
   assert.equal(opera.result.ok, true);
   assert.equal(opera.result.echo.tool, 'tab_content');
   assert.deepEqual(opera.result.echo.args, { tabId: 1 });
+  assert.equal(opera.result.echo.expectedOrigin, 'https://example.com');
   assert.equal(opera.receipt.event, 'OPERA_CALL_COMPLETED');
 
   const status = await fetch(`${base}/api/browser/opera/status`).then(r => r.json());

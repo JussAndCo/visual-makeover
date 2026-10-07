@@ -27,11 +27,11 @@ Authenticated browser access never requires this app to collect a password or ra
 
 The repo includes an Opera MCP adapter contract based on the connector capability surface used here:
 
-- `list_tabs`
-- `history`
 - `tab_content`
 - `screenshot`
 - `go_to_page`
+
+The underlying Opera connector may also expose `list_tabs` and `history`, but Visual Makeover blocks those browser-global reads until a separate global-read grant model exists.
 
 Set `OPERA_BRIDGE_URL` to an owner-controlled bridge that maps `{ tool, args }` to the Opera MCP host in your deployment. This starter intentionally does not pretend ChatGPT's connected Opera tool is a public embeddable API. See `docs/OPERA_BRIDGE.md` for the exact trust boundary.
 

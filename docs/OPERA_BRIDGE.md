@@ -26,3 +26,14 @@ No password typing, cookie extraction, arbitrary form submission, or silent publ
 ## Why the bridge is external
 
 The connected Opera tool inside an AI host is not a public HTTP API that a standalone website can safely assume exists. `OPERA_BRIDGE_URL` must point to a bridge you control in a runtime that genuinely has Opera MCP authority. Until it is configured, the app reports the adapter as present but the bridge as disconnected and browser calls fail closed.
+
+
+## Origin proof requirement
+
+Visual Makeover never trusts a caller-supplied tab ID as proof of origin. Every bridge request includes `expectedOrigin`. The owner-controlled bridge must resolve the actual tab/navigation origin inside the browser runtime and return:
+
+```json
+{ "origin": "https://example.com", "data": { "...": "tool result" } }
+```
+
+Visual Makeover rejects a missing or mismatched origin proof. Browser-wide `list_tabs` and `history` are intentionally blocked by the current origin-scoped grant model. Add a distinct global-read authority class before exposing them.
