@@ -1,5 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdtemp, writeFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import {
   BROWSER_RECOVERY_BOOLEAN_KEYS,
   normalizeBrowserRecoveryEvidence,
@@ -77,4 +80,30 @@ test('configured Opera keeps live-session state unknown until separately proven'
   assert.equal(evidence.values.operaConnectorAvailable, true);
   assert.equal(evidence.known.operaConnectorAvailable, true);
   assert.equal(evidence.known.operaLiveSessionExposed, false);
+});
+
+
+test('fresh Opera host snapshot overrides env fallback without deciding authority', async t => {
+  const dir = await mkdtemp(join(tmpdir(), 'visual-makeover-host-'));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const file = join(dir, 'opera-host-evidence.json');
+  await writeFile(file, JSON.stringify({
+    toolSurfaceAvailable: true,
+    liveSessionExposed: false,
+    source: 'test-opera-host',
+    observedAt: new Date().toISOString(),
+    expiresAt: new Date(Date.now() + 60_000).toISOString()
+  }));
+
+  const evidence = browserRuntimeEvidenceFromEnv({
+    OPERA_HOST_EVIDENCE_FILE: file,
+    OPERA_CONNECTOR_AVAILABLE: 'false',
+    OPERA_LIVE_SESSION_EXPOSED: 'true'
+  });
+
+  assert.equal(evidence.values.operaConnectorAvailable, true);
+  assert.equal(evidence.values.operaLiveSessionExposed, false);
+  assert.equal(evidence.sources.operaConnectorAvailable, 'host:test-opera-host');
+  assert.equal(evidence.sources.operaLiveSessionExposed, 'host:test-opera-host');
+  assert.equal(evidence.known.directCapabilitySufficient, false);
 });
