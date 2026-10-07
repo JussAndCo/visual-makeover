@@ -35,7 +35,7 @@ The underlying Opera connector may also expose `list_tabs` and `history`, but Vi
 
 Visual Makeover reuses the portfolio browser-recovery contract `juss/browser-bridge-recovery@v1`: direct capability first, then live Opera, then another authenticated bridge, then bounded generic automation, otherwise fail closed. A plugin can be installed/enabled and fully permissioned while its live browser session is temporarily not exposed; that state is classified as `BLOCKED_CONNECTOR_BRIDGE`, not as bad user setup. `OPERA_BRIDGE_URL` remains the standalone-runtime adapter for deployments that need to invoke a browser host outside ChatGPT. See `docs/OPERA_BRIDGE.md` for the trust boundary.
 
-Recovery also uses `juss/browser-recovery-evidence@v1`. All eight routing booleans are always materialized, but each has a separate `known` flag and source. Missing facts therefore appear as `value: false, known: false`, never as an inferred false. Server-owned runtime evidence overrides caller claims for configured provider availability.
+Recovery also uses `juss/browser-recovery-evidence@v1`. All eight routing booleans are always materialized, but each has a separate `known` flag and source. Missing facts therefore appear as `value: false, known: false`, never as an inferred false. A fresh Opera host snapshot may override Opera env fallback for connector/live-session facts only. Missing adapter config stays UNKNOWN rather than becoming false. Snapshot state is surfaced as `fresh`, `stale`, `missing`, `invalid`, or `disabled`, with a maximum five-minute evidence window.
 
 Browser execution goes through `POST /api/browser/inspect`. It requires complete recovery evidence, the session-bound origin/scope grant, **and an explicit provider allowlist inside that grant**. The single Opera handshake retry budget is server-owned, scoped to the app session + target origin, expires with the recovery window, and cannot be reset by client input. The current UI grants `opera` only. If recovery selects `authenticated_browser_bridge` or `generic_browser_automation`, that route may be reported, but it cannot execute until a new grant explicitly names that provider. Fallback never inherits Opera authority.
 
@@ -65,7 +65,7 @@ npm run test:playwright
 - configure the Cloudflare Access application/audience for the deployed hostname
 - persist sessions/grants/receipts in a real store
 - add per-domain scraping policy + rate limits + robots/terms evaluation
-- set/probe the browser runtime evidence booleans when a host bridge is available; keep unknown facts unknown
+- feed fresh Opera host-runtime evidence through `OPERA_HOST_EVIDENCE_FILE` when available; keep missing/stale facts unknown
 - connect a live Opera/host bridge when browser-only evidence is required; preserve verified plugin/permission state if the runtime attach is temporarily blocked
 - add screenshot/DOM evidence as inputs to PromptOS
 - add patch/export adapters for GitHub, Figma, or site builders
