@@ -39,4 +39,4 @@ The runnable starter uses a local heuristic planner so the product works without
 
 ## Production auth
 
-`/api/auth/dev-sign-in` is development-only and returns 404 under `NODE_ENV=production`. Production must plug in a real identity provider. Browser grants remain a second authorization step even after that change.
+`POST /api/auth/session` uses a local development identity outside production. Under `NODE_ENV=production`, it requires Cloudflare Access and verifies the `CF-Access-Jwt-Assertion` against the configured issuer JWKS, application audience, signature, and expiry. The app converts that verified identity into a short-lived local app session. Browser grants remain a second authorization step after identity is established.

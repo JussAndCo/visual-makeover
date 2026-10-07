@@ -5,6 +5,7 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { assertPublicUrl, originOf } from './security.mjs';
 import { callOperaBridge, requiredScopeForOperaTool, OPERA_CAPABILITIES } from './browser/opera-provider.mjs';
+import { verifyCloudflareAccessJwt } from './auth-cloudflare-access.mjs';
 
 const ROOT = normalize(join(fileURLToPath(new URL('..', import.meta.url)), '..'));
 const PUBLIC = join(ROOT, 'public');
@@ -41,7 +42,10 @@ function bearer(req) {
 function requireSession(req) {
   const token = bearer(req);
   const session = token && sessions.get(token);
-  if (!session) throw Object.assign(new Error('Sign in required.'), { status: 401 });
+  if (!session || (session.expiresAt && session.expiresAt <= Date.now())) {
+    if (token) sessions.delete(token);
+    throw Object.assign(new Error('Sign in required.'), { status: 401 });
+  }
   return session;
 }
 
@@ -121,12 +125,34 @@ async function api(req, res, pathname) {
   if (pathname === '/api/health' && req.method === 'GET') return json(res, 200, { ok: true, noticeVersion: NOTICE_VERSION });
   if (pathname === '/api/browser/opera/status' && req.method === 'GET') return json(res, 200, { provider: 'opera-mcp', configured: Boolean(process.env.OPERA_BRIDGE_URL), capabilities: OPERA_CAPABILITIES });
 
-  if (pathname === '/api/auth/dev-sign-in' && req.method === 'POST') {
-    if (process.env.NODE_ENV === 'production') return json(res, 404, { error: 'Not found.' });
+  if (pathname === '/api/auth/session' && req.method === 'POST') {
+    let identity;
+    let mode;
+    let expiresAt;
+
+    if (process.env.NODE_ENV === 'production') {
+      const assertion = req.headers['cf-access-jwt-assertion'];
+      try {
+        identity = await verifyCloudflareAccessJwt(assertion, {
+          teamDomain: process.env.CF_ACCESS_TEAM_DOMAIN,
+          audience: process.env.CF_ACCESS_AUD
+        });
+      } catch (error) {
+        return json(res, 401, { error: error.message });
+      }
+      mode = 'cloudflare-access';
+      expiresAt = Math.min(identity.exp * 1000, Date.now() + 8 * 60 * 60_000);
+    } else {
+      mode = 'dev';
+      identity = { sub: 'local-dev' };
+      expiresAt = Date.now() + 8 * 60 * 60_000;
+    }
+
     const token = randomBytes(24).toString('base64url');
-    sessions.set(token, { id: randomUUID(), createdAt: Date.now(), mode: 'dev' });
-    await receipt('APP_SESSION_CREATED', { mode: 'dev' });
-    return json(res, 201, { token, mode: 'dev', warning: 'Development-only sign-in. Replace with your real identity provider before production.' });
+    const session = { id: randomUUID(), createdAt: Date.now(), expiresAt, mode, identity: { sub: identity.sub, email: identity.email } };
+    sessions.set(token, session);
+    const r = await receipt('APP_SESSION_CREATED', { mode, subject: identity.sub, expiresAt: new Date(expiresAt).toISOString() });
+    return json(res, 201, { token, mode, expiresAt, identity: session.identity, receipt: r });
   }
 
   if (pathname === '/api/browser/grants' && req.method === 'POST') {
@@ -159,7 +185,7 @@ async function api(req, res, pathname) {
     const b = await bodyJson(req);
     if (!b.signals?.url) return json(res, 400, { error: 'Scrape signals are required.' });
     const plan = heuristicMakeover(b.signals);
-    return json(res, 200, { plan, provider: 'local-heuristic', note: 'Swap this adapter for PromptOS/your model router without changing browser authority.' });
+    return json(res, 200, { plan, provider: 'local-heuristic', note: 'Swap this adapter for PromptOS/ your model router without changing browser authority.' });
   }
 
   if (pathname === '/api/browser/opera/call' && req.method === 'POST') {
@@ -171,7 +197,7 @@ async function api(req, res, pathname) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 15000);
     try {
-      const result = await callOperaBridge({ bridgeUrl: process.env.OPERA_BRIDGE_URL, bridgeToken: process.env.OPERA_BRIDGE_TOKEN, tool: b.toool, args: b.args, signal: controller.signal });
+      const result = await callOperaBridge({ bridgeUrl: process.env.OPERA_BRIDGE_URL, bridgeToken: process.env.OPERA_BRIDGE_TOKEN, tool: b.tool, args: b.args, signal: controller.signal });
       const r = await receipt('OPERA_CALL_COMPLETED', { grantId: grant.id, tool: b.tool, origin: grant.origin });
       return json(res, 200, { result, receipt: r });
     } finally { clearTimeout(timer); }
@@ -182,29 +208,25 @@ async function api(req, res, pathname) {
 
 async function staticFile(req, res, pathname) {
   const rel = pathname === '/' ? 'index.html' : pathname.replace(/^\//, '');
-  const target = normalize(join(PUBLIC, rel));
-  if (!target.startsWith(PUBLIC)) return json(res, 403, { error: 'Forbidden.' });
-  try {
-    const content = await readFile(target);
-    res.writeHead(200, { 'content-type': mime[extname(target)] || 'application/octet-stream' });
-    res.end(content);
-  } catch {
-    const html = await readFile(join(PUBLIC, 'index.html'));
-    res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
-    res.end(html);
-  }
-}
+  const target = normalize(join(PUBLIC,ô[
+JN¬àYà
+]\ôŸ]ú›\ù’⁄]
+PìP JHô]\õàú€€äô\ÀÀ»\úõ‹éà	—õ‹òöY[ãâ»JN¬àûH¬à€€ú›€€ù[ùH]ÿZ]ôXYö[J\ôŸ]
+N¬àô\Àù‹ö]RXY
+å»	ÿ€€ù[ù]\IŒàZ[YVŸ^ò[YJ\ôŸ]
+WH	ÿ\Xÿ][€ã€ÿ›]\›ôX[I»JN¬àô\Àô[ô
+€€ù[ù
+N¬àHÿ]⁄¬à€€ú›[H]ÿZ]ôXYö[Jõ⁄[äPìPÀ	⁄[ô^ö[	 JN¬àô\Àù‹ö]RXY
+å»	ÿ€€ù[ù]\IŒà	›^⁄[»⁄\úŸ]]]ãN	»JN¬àô\Àô[ô
+[
+N¬àBüBÇò€€ú›Ÿ\ùô\àHò‹ôX]TŸ\ùô\ä\ﬁ[ò»
+ô\Kô\ HOà¬à€€ú›\õHô]»Tì
+ô\Kù\õãÀ…‹ô\KöXY\úÀö‹›	€ÿÿ[‹›	ﬂX
+N¬àûH¬àYà
+\õú]ò[YKú›\ù’⁄]
+	Àÿ\K… JH¬à€€ú›[ôYH]ÿZ]\Jô\Kô\À\õú]ò[YJN¬àYà
+[ôYOOHò[ŸJHú€€äô\À»\úõ‹éà	”õ›õ›[ôâ»JN¬àH[ŸH]ÿZ]›]X—ö[Jô\Kô\À\õú]ò[YJN¬àHÿ]⁄
+\úäH¬àú€€äô\À\úãú›]\»»\úõ‹éà\úãõY\‹ÿYŸH	‘ô\]Y\›òZ[Yâ»JN¬àBüJN¬ÇúŸ\ùô\ãõ\›[ä‘ï	ÃLçÀåååIÀ
 
-const server = http.createServer(async (req, res) => {
-  const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
-  try {
-    if (url.pathname.startsWith('/api/')) {
-      const handled = await api(req, res, url.pathname);
-      if (handled === false) json(res, 404, { error: 'Not found.' });
-    } else await staticFile(req, res, url.pathname);
-  } catch (err) {
-    json(res, err.status || 400, { error: err.message || 'Request failed.' });
-  }
-});
-
-server.listen(PORT, '127.0.0.1', () => console.log(`Visual Makeover on http://127.0.0.1:${PORT}`));
+HOà€€ú€€KõŸ ö\›X[XZŸ[›ô\à€àãÀÃLçÀåååNâ‘‘ïX
+JN¬

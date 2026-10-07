@@ -33,7 +33,13 @@ The repo includes an Opera MCP adapter contract based on the connector capabilit
 - `screenshot`
 - `go_to_page`
 
-Set `OPERA_BRIDGE_URL` to an owner-controlled bridge that maps `{ tool, args }` to the Opera MCP host in your deployment. This starter intentionally does not pretend ChatGPT's connected Opera tool is a public embeddable API.
+Set `OPERA_BRIDGE_URL` to an owner-controlled bridge that maps `{ tool, args }` to the Opera MCP host in your deployment. This starter intentionally does not pretend ChatGPT's connected Opera tool is a public embeddable API. See `docs/OPERA_BRIDGE.md` for the exact trust boundary.
+
+## Production identity
+
+Production uses **Cloudflare Access** as the identity gate. Configure `CF_ACCESS_TEAM_DOMAIN` and `CF_ACCESS_AUD`, place the app behind the matching Access application, and Visual Makeover verifies the `CF-Access-Jwt-Assertion` signature, issuer, audience, and expiry before issuing its short-lived app session. The app never receives the user's password.
+
+Development mode keeps a local session path for testing only.
 
 ## Run
 
@@ -52,7 +58,7 @@ npm run test:playwright
 
 ## Next production gates
 
-- replace dev sign-in with your identity provider
+- configure the Cloudflare Access application/audience for the deployed hostname
 - persist sessions/grants/receipts in a real store
 - add per-domain scraping policy + rate limits + robots/terms evaluation
 - connect the Opera bridge in the runtime that actually has Opera MCP authority

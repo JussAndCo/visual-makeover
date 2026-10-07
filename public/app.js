@@ -20,9 +20,10 @@ function addReceipt(r) {
 
 async function ensureSession() {
   if (state.session) return;
-  const data = await api('/api/auth/dev-sign-in', { method: 'POST', body: '{}' });
+  const data = await api('/api/auth/session', { method: 'POST', body: '{}' });
   state.session = data.token;
   $('#identityCheck').textContent = '✓';
+  addReceipt(data.receipt);
 }
 
 function selectedScopes() {

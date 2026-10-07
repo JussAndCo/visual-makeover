@@ -1,10 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
+import http from 'node:http';
 
 const PORT = 4197;
+const BRIDGE_PORT = 4198;
 const base = `http://127.0.0.1:${PORT}`;
 let child;
+let bridge;
 
 async function waitForServer() {
   for (let i = 0; i < 40; i++) {
@@ -14,15 +17,29 @@ async function waitForServer() {
   throw new Error('server did not start');
 }
 
-test('dual gate API issues app session then scoped browser grant', async t => {
-  child = spawn(process.execPath, ['src/server.mjs'], { cwd: new URL('..', import.meta.url), env: { ...process.env, PORT: String(PORT) }, stdio: 'ignore' });
+test('dual gate API issues app session, scoped browser grant, and allow-listed Opera bridge call', async t => {
+  bridge = http.createServer(async (req, res) => {
+    const chunks = [];
+    for await (const chunk of req) chunks.push(chunk);
+    const body = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ ok: true, echo: body }));
+  });
+  await new Promise(resolve => bridge.listen(BRIDGE_PORT, '127.0.0.1', resolve));
+  t.after(() => bridge?.close());
+
+  child = spawn(process.execPath, ['src/server.mjs'], {
+    cwd: new URL('..', import.meta.url),
+    env: { ...process.env, PORT: String(PORT), OPERA_BRIDGE_URL: `http://127.0.0.1:${BRIDGE_PORT}` },
+    stdio: 'ignore'
+  });
   t.after(() => child?.kill());
   await waitForServer();
 
   const health = await fetch(`${base}/api/health`).then(r => r.json());
   assert.equal(health.ok, true);
 
-  const signed = await fetch(`${base}/api/auth/dev-sign-in`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' }).then(r => r.json());
+  const signed = await fetch(`${base}/api/auth/session`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' }).then(r => r.json());
   assert.ok(signed.token);
 
   const grantRes = await fetch(`${base}/api/browser/grants`, {
@@ -35,6 +52,23 @@ test('dual gate API issues app session then scoped browser grant', async t => {
   assert.equal(granted.grant.origin, 'https://example.com');
   assert.deepEqual(granted.grant.scopes, ['scrape:public','browser:read']);
   assert.ok(granted.token);
+
+
+  const operaRes = await fetch(`${base}/api/browser/opera/call`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      authorization: `Bearer ${signed.token}`,
+      'x-browser-grant': granted.token
+    },
+    body: JSON.stringify({ tool: 'tab_content', args: { tabId: 1 } })
+  });
+  assert.equal(operaRes.status, 200);
+  const opera = await operaRes.json();
+  assert.equal(opera.result.ok, true);
+  assert.equal(opera.result.echo.tool, 'tab_content');
+  assert.deepEqual(opera.result.echo.args, { tabId: 1 });
+  assert.equal(opera.receipt.event, 'OPERA_CALL_COMPLETED');
 
   const status = await fetch(`${base}/api/browser/opera/status`).then(r => r.json());
   assert.equal(status.provider, 'opera-mcp');
