@@ -91,11 +91,11 @@ export function browserRuntimeEvidenceFromEnv(env = process.env) {
 
   const operaAvailable = optionalEnvBoolean(env, 'OPERA_CONNECTOR_AVAILABLE');
   if (operaAvailable.known) set('operaConnectorAvailable', operaAvailable.value, 'env:OPERA_CONNECTOR_AVAILABLE');
-  else set('operaConnectorAvailable', Boolean(env.OPERA_BRIDGE_URL), 'config:OPERA_BRIDGE_URL');
+  else if (env.OPERA_BRIDGE_URL) set('operaConnectorAvailable', true, 'config:OPERA_BRIDGE_URL');
 
   const operaLive = optionalEnvBoolean(env, 'OPERA_LIVE_SESSION_EXPOSED');
   if (operaLive.known) set('operaLiveSessionExposed', operaLive.value, 'env:OPERA_LIVE_SESSION_EXPOSED');
-  else if (values.operaConnectorAvailable === false) set('operaLiveSessionExposed', false, 'derived:no-opera-connector');
+  else if (known.operaConnectorAvailable && values.operaConnectorAvailable === false) set('operaLiveSessionExposed', false, 'derived:no-opera-connector');
 
   const alternateAvailable = optionalEnvBoolean(env, 'ALT_AUTH_BROWSER_AVAILABLE');
   if (alternateAvailable.known) set('alternateAuthenticatedBridgeAvailable', alternateAvailable.value, 'env:ALT_AUTH_BROWSER_AVAILABLE');
@@ -115,20 +115,39 @@ export function browserRuntimeEvidenceFromEnv(env = process.env) {
 
   const defaultHostFile = fileURLToPath(new URL('../../data/opera-host-evidence.json', import.meta.url));
   const hostFile = env.OPERA_HOST_EVIDENCE_FILE || (env === process.env ? defaultHostFile : null);
+  let operaHostSnapshot = hostFile ? 'missing' : 'disabled';
+
   if (hostFile) {
     try {
       const snapshot = JSON.parse(readFileSync(hostFile, 'utf8'));
+      const now = Date.now();
+      const observedAtMs = Date.parse(snapshot.observedAt || '');
       const expiresAtMs = Date.parse(snapshot.expiresAt || '');
-      if (Number.isFinite(expiresAtMs) && expiresAtMs > Date.now() && typeof snapshot.toolSurfaceAvailable === 'boolean') {
+      const windowMs = expiresAtMs - observedAtMs;
+      const validWindow = Number.isFinite(observedAtMs)
+        && Number.isFinite(expiresAtMs)
+        && observedAtMs <= now + 5_000
+        && expiresAtMs > now
+        && windowMs > 0
+        && windowMs <= 5 * 60_000
+        && typeof snapshot.toolSurfaceAvailable === 'boolean';
+
+      if (validWindow) {
+        operaHostSnapshot = 'fresh';
         set('operaConnectorAvailable', snapshot.toolSurfaceAvailable, `host:${String(snapshot.source || 'opera-host-snapshot').slice(0, 100)}`);
         if (typeof snapshot.liveSessionExposed === 'boolean') {
           set('operaLiveSessionExposed', snapshot.liveSessionExposed, `host:${String(snapshot.source || 'opera-host-snapshot').slice(0, 100)}`);
         } else if (snapshot.toolSurfaceAvailable === false) {
           set('operaLiveSessionExposed', false, `host:${String(snapshot.source || 'opera-host-snapshot').slice(0, 100)}:derived`);
         }
+      } else {
+        operaHostSnapshot = Number.isFinite(expiresAtMs) && expiresAtMs <= now ? 'stale' : 'invalid';
       }
-    } catch {}
+    } catch (error) {
+      operaHostSnapshot = error?.code === 'ENOENT' ? 'missing' : 'invalid';
+    }
   }
 
-  return normalizeBrowserRecoveryEvidence({ values, known, sources });
+  const result = normalizeBrowserRecoveryEvidence({ values, known, sources });
+  return { ...result, runtimeMeta: { operaHostSnapshot } };
 }
