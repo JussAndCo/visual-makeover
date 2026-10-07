@@ -43,6 +43,14 @@ Alternate/generic bridge adapters use the same origin-proof contract as Opera an
 
 The repo does not collect browser cookies or passwords. `OPERA_BRIDGE_URL` is an owner-controlled standalone-runtime adapter that translates `{tool,args}` to the browser host used in the deployment environment. This avoids pretending a ChatGPT plugin transport is itself a public embeddable API.
 
+## Evidence-bound PromptOS handoff
+
+Visual Makeover captures successful browser reads into an in-memory, expiring cache keyed to the app session, browser grant, and origin. A capture may contain bounded rendered text for local analysis and/or a screenshot SHA-256 digest. Raw screenshot bytes are not returned by the inspect API after capture.
+
+Each portable evidence item conforms to PromptOS's active `juss/browser-reality@v1` receipt contract. The handoff artifact is governed by `visual-makeover/promptos-handoff@v1` and contains only evidence receipts/fingerprints plus the makeover proposal. It is draft/advisory-only and cannot carry browser grants, session tokens, provider authority, mutation authority, deployment authority, or publication authority.
+
+The local heuristic may use captured browser evidence, but `screenshotPixelsAnalyzed=false` remains explicit because this starter hashes screenshots without claiming pixel-level visual reasoning.
+
 ## Scraping
 
 Public HTML scraping is isolated from authenticated browser capture. The starter:
