@@ -594,7 +594,7 @@ async function api(req, res, pathname) {
       });
       return json(res, 200, {
         provider: executableProvider,
-        result,
+        result: { captured: true, tool: b.tool },
         capture: publicCapture(capture),
         decision,
         evidence,
