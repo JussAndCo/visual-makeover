@@ -185,7 +185,8 @@ function resolveBrowserRecovery(body, operaRetryCount) {
         status: 409,
         message: `Browser recovery evidence incomplete: ${evidence.missing.join(', ')}.`
       },
-      evidence
+      evidence,
+      runtimeMeta
     };
   }
 
@@ -226,7 +227,7 @@ async function api(req, res, pathname) {
     const targetOrigin = originOf(b.targetUrl);
     const recoveryState = recoveryStateFor(session.id, targetOrigin);
     const resolved = resolveBrowserRecovery(b, recoveryState.operaRetryCount);
-    if (resolved.error) return json(res, resolved.error.status, { error: resolved.error.message, evidence: resolved.evidence });
+    if (resolved.error) return json(res, resolved.error.status, { error: resolved.error.message, evidence: resolved.evidence, runtimeMeta: resolved.runtimeMeta });
     const { evidence, decision, providerPageEvidence, runtimeMeta } = resolved;
     const r = await receipt('BROWSER_ROUTE_DECIDED', {
       contract: decision.contract,
@@ -329,7 +330,7 @@ async function api(req, res, pathname) {
     const grant = requireGrant(req, { scope, origin: targetOrigin, sessionId: session.id });
     const recoveryState = recoveryStateFor(session.id, targetOrigin);
     const resolved = resolveBrowserRecovery(b, recoveryState.operaRetryCount);
-    if (resolved.error) return json(res, resolved.error.status, { error: resolved.error.message, evidence: resolved.evidence });
+    if (resolved.error) return json(res, resolved.error.status, { error: resolved.error.message, evidence: resolved.evidence, runtimeMeta: resolved.runtimeMeta });
     const { evidence, decision, providerPageEvidence, runtimeMeta } = resolved;
 
     const routeReceipt = await receipt('BROWSER_ROUTE_DECIDED', {
@@ -389,6 +390,7 @@ async function api(req, res, pathname) {
         error: error.message,
         decision,
         evidence,
+        runtimeMeta,
         receipt: routeReceipt
       });
     }
