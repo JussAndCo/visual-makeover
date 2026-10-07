@@ -80,16 +80,18 @@ test('dual gate API issues app session, scoped browser grant, and allow-listed O
   assert.equal(operaRes.status, 200);
   const opera = await operaRes.json();
   assert.equal(opera.provider, 'opera');
-  assert.equal(opera.result.ok, true);
-  assert.equal(opera.result.echo.tool, 'tab_content');
-  assert.deepEqual(opera.result.echo.args, { tabId: 1 });
-  assert.equal(opera.result.echo.expectedOrigin, 'https://example.com');
+  assert.equal(opera.result.captured, true);
+  assert.equal(opera.result.tool, 'tab_content');
   assert.equal(opera.decision.route, 'opera');
   assert.equal(opera.evidence.complete, true);
   assert.equal(opera.evidence.known.operaLiveSessionExposed, true);
   assert.equal(opera.authority.source, 'browser-grant');
   assert.equal(opera.authority.provider, 'opera');
-  assert.equal(opera.receipts[1].event, 'BROWSER_INSPECT_COMPLETED');
+  assert.equal(opera.capture.contractId, 'juss/browser-reality@v1');
+  assert.match(opera.capture.evidenceFingerprintSha256, /^[a-f0-9]{64}$/);
+  assert.equal(opera.receipts[1].event, 'BROWSER_EVIDENCE_CAPTURED');
+  assert.equal(opera.receipts[2].event, 'BROWSER_INSPECT_COMPLETED');
+  assert.ok(!JSON.stringify(opera).includes('echo'));
 
   const status = await fetch(`${base}/api/browser/opera/status`).then(r => r.json());
   assert.equal(status.provider, 'opera-mcp');
