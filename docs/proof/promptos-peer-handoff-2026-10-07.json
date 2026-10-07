@@ -1,0 +1,38 @@
+{
+  "auditDate": "2026-10-07",
+  "subject": "Visual Makeover -> PromptOS evidence-bound peer handoff",
+  "visualMakeover": {
+    "verifiedCodeHead": "26fb85ce5b5ae8c6f56540aaaa8aaf15454b1176",
+    "sourceContract": "visual-makeover/promptos-handoff@v1",
+    "sourceContractPath": ".control-room/promptos-handoff.contract.json",
+    "browserRealityContract": "juss/browser-reality@v1",
+    "integrationTest": "tests/evidence-flow.test.mjs",
+    "integrationTestExecution": "UNKNOWN_NOT_EXECUTED_FROM_PRIVATE_HEAD_IN_THIS_SANDBOX",
+    "localPortableEvidenceTests": "5/5 PASS",
+    "remoteCi": "UNKNOWN_NO_STATUSES"
+  },
+  "promptOS": {
+    "observedAcceptanceHead": "11e4a2ad525300bee39ea56a8314bf3d951bd5de",
+    "acceptanceContract": "promptos/visual-makeover-handoff-acceptance@v1",
+    "acceptanceContractPath": ".control-room/visual-makeover-handoff.contract.json",
+    "verifier": "scripts/verify-visual-makeover-handoff-contract.mjs",
+    "requiredControlRoomLane": true,
+    "remoteCi": "UNKNOWN_NO_STATUSES"
+  },
+  "authority": {
+    "handoffAdvisoryOnly": true,
+    "executionAuthorized": false,
+    "registrationAuthority": false,
+    "browserAuthorityInherited": false,
+    "rawBrowserPayloadExported": false,
+    "rawScreenshotBytesExported": false,
+    "browserGrantTokenExported": false,
+    "sessionTokenExported": false
+  },
+  "proof": {
+    "promptOSConformanceDigest": "b638320661652bab6398f45e2b35bc343ac963bb0eb8b926462db6aea8cb1ab4",
+    "promptOSConformanceStatus": "PASS",
+    "screenshotPixelsAnalyzed": false
+  },
+  "nextGate": "Reacquire exact-head CI evidence for both repositories. Only after that, exercise a live authorized browser capture when the Opera session is exposed; do not infer runtime success from repository proof."
+}
